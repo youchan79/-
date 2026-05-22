@@ -1,0 +1,6 @@
+{
+  "name": "안드로이드 홈 대시보드",
+  "description": "토스 스타일의 미니멀한 핀테크 디자인을 적용한 실제 작동하는 안드로이드 앱 홈 대시보드 반응형 프로토타입",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
