@@ -212,83 +212,101 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Background bid decrease loop (5-8 seconds)
+  // Toss Passcode & Payment Funnel States
+  const [paymentStep, setPaymentStep] = useState<number | null>(null); // null, 0 (최종금액 확인), 1 (비밀번호 입력), 2 (정산성공 완료)
+  const [pinInput, setPinInput] = useState<string>("");
+  const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
+  const [paymentErrand, setPaymentErrand] = useState<ErrandJob | null>(null);
+  const [keypadDigits, setKeypadDigits] = useState<string[]>([]);
+
+  // Shuffle randomized keypad digits
   useEffect(() => {
-    const bidCycle = setInterval(() => {
-      // Choose a random available job to bid down
-      const activeBiddingJobs = jobs.filter(j => j.status === "bidding" && j.timeLeft > 10);
-      if (activeBiddingJobs.length === 0) return;
+    if (paymentStep === 1) {
+      const shuffleArray = (arr: any[]) => {
+        const result = [...arr];
+        for (let i = result.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [result[i], result[j]] = [result[j], result[i]];
+        }
+        return result;
+      };
+      setKeypadDigits(shuffleArray(["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]));
+      setPinInput("");
+    }
+  }, [paymentStep]);
 
-      const randomIndex = Math.floor(Math.random() * activeBiddingJobs.length);
-      const chosenJob = activeBiddingJobs[randomIndex];
+  // Passcode entry handlers
+  const handleKeypadPress = (val: string) => {
+    if (pinInput.length < 6) {
+      const nextVal = pinInput + val;
+      setPinInput(nextVal);
+      if (nextVal.length === 6) {
+        setTimeout(() => {
+          setPaymentStep(2);
+        }, 400); // 0.4s micro spin loading representation
+      }
+    }
+  };
 
-      // Reduce price by a random step (e.g. 500 ~ 2000 KRW)
-      const priceReduction = Math.floor(Math.random() * 4 + 1) * 500;
-      const targetNewPrice = Math.max(2000, chosenJob.currentPrice - priceReduction);
+  const handleKeypadDelete = () => {
+    if (pinInput.length > 0) {
+      setPinInput(pinInput.slice(0, -1));
+    }
+  };
 
-      if (targetNewPrice < chosenJob.currentPrice) {
+  const handleKeypadClear = () => {
+    setPinInput("");
+  };
+
+  // Toss-style real-time Bidding Simulator (Background useEffect)
+  useEffect(() => {
+    const bidSimulator = setInterval(() => {
+      const biddingJobs = jobs.filter(j => j.status === "bidding");
+      if (biddingJobs.length === 0) return;
+
+      // 30% probability every 6 seconds
+      if (Math.random() < 0.3) {
+        const randIndex = Math.floor(Math.random() * biddingJobs.length);
+        const targetJob = biddingJobs[randIndex];
+        
+        const competitors = ["빛의속도헬퍼", "동네보안관", "총알탄배달원", "일등헬퍼"];
+        const competitorName = competitors[Math.floor(Math.random() * competitors.length)];
+        const updatedNewPrice = Math.max(1000, targetJob.currentPrice - 500);
+
         setJobs(prevJobs => 
-          prevJobs.map(job => {
-            if (job.id === chosenJob.id) {
-              return { 
-                ...job, 
-                originalPrice: job.currentPrice,
-                currentPrice: targetNewPrice, 
-                bidsCount: job.bidsCount + 1 
+          prevJobs.map(j => {
+            if (j.id === targetJob.id) {
+              return {
+                ...j,
+                originalPrice: j.currentPrice,
+                currentPrice: updatedNewPrice,
+                bidsCount: j.bidsCount + 1
               };
             }
-            return job;
+            return j;
           })
         );
 
-        // Flash visual pulse dot on this row
-        setPulseJobId(chosenJob.id);
-        setRecentNotification(`[역경매 발생] "${chosenJob.title}"의 최저가 입찰이 ${targetNewPrice.toLocaleString()}원으로 인하되었습니다!`);
-        
-        // Clear pulse and banners after 3 seconds
-        setTimeout(() => {
-          setPulseJobId(null);
-        }, 3000);
-        setTimeout(() => {
-          setRecentNotification(null);
-        }, 4500);
-      }
-    }, 6500);
+        // Flash visual alert on target row
+        setPulseJobId(targetJob.id);
+        setTimeout(() => setPulseJobId(null), 3000);
 
-    return () => clearInterval(bidCycle);
+        // Show floating Toast
+        setToast({
+          message: `⚡ ${competitorName}이 "${targetJob.title}"의 입찰가를 500원 인하했습니다!`,
+          visible: true
+        });
+
+        // Hide after 2.5s
+        setTimeout(() => {
+          setToast(prev => prev ? { ...prev, visible: false } : null);
+        }, 2500);
+      }
+    }, 6000);
+
+    return () => clearInterval(bidSimulator);
   }, [jobs]);
 
-  // Handle manually triggered bid simulation from left testing panel
-  const triggerManualBiddingDown = () => {
-    const biddingErrands = jobs.filter(j => j.status === "bidding");
-    if (biddingErrands.length === 0) {
-      setRecentNotification("현재 역경매가 유효하게 진행 중인 일감이 존재하지 않습니다.");
-      return;
-    }
-    const target = biddingErrands[Math.floor(Math.random() * biddingErrands.length)];
-    const deduction = 1500;
-    const nextLimitPrice = Math.max(3000, target.currentPrice - deduction);
-
-    setJobs(prev => 
-      prev.map(j => {
-        if (j.id === target.id) {
-          return {
-            ...j,
-            originalPrice: j.currentPrice,
-            currentPrice: nextLimitPrice,
-            bidsCount: j.bidsCount + 1
-          };
-        }
-        return j;
-      })
-    );
-    setPulseJobId(target.id);
-    setRecentNotification(`동기화 제어: "${target.title}" 의뢰 금액이 ${deduction.toLocaleString()}원 낮아졌습니다.`);
-    setTimeout(() => setPulseJobId(null), 2500);
-  };
-
-  // State handlers inside app let users do mock operations
-  // 1. Reset
   const handleResetAll = () => {
     setJobs(INITIAL_JOBS);
     setUserProfile({
@@ -303,6 +321,8 @@ export default function App() {
     setFormStep(1);
     setRecentNotification("모바일 앱 시뮬레이터 상태가 리셋되었습니다.");
   };
+
+
 
   // 2. Add points from panel
   const handleAddPoints = (pts: number) => {
@@ -431,20 +451,21 @@ export default function App() {
 
   return (
     <AndroidFrame>
-      {/* Real-time floating Notification Banner */}
-      <AnimatePresence>
-        {recentNotification && (
-          <motion.div
-            initial={{ opacity: 0, y: -25 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -25 }}
-            className="absolute top-12 inset-x-4 bg-[#191F28] text-white py-3 px-4.5 rounded-2xl text-xs font-bold shadow-xl z-50 flex items-center space-x-2 border border-white/5 opacity-98 leading-snug"
-          >
-            <TrendingDown className="w-4 h-4 text-[#3182F6] shrink-0" />
-            <span className="flex-1">{recentNotification}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="flex-1 h-full w-full flex flex-col relative overflow-hidden bg-[#F2F4F6]">
+        {/* Real-time floating Notification Banner */}
+        <AnimatePresence>
+          {recentNotification && (
+            <motion.div
+              initial={{ opacity: 0, y: -25 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -25 }}
+              className="absolute top-12 inset-x-4 bg-[#191F28]/95 backdrop-blur-md text-white py-3 px-4.5 rounded-2xl text-xs font-bold shadow-xl z-50 flex items-center space-x-2 border border-white/5 opacity-98 leading-snug"
+            >
+              <TrendingDown className="w-4 h-4 text-[#3182F6] shrink-0" />
+              <span className="flex-1">{recentNotification}</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
       {/* Main Content View Switcher */}
       {activeTab === "home" && (
@@ -1039,7 +1060,7 @@ export default function App() {
                     <span className="w-2 h-2 rounded-full bg-emerald-500" />
                     <span className="text-xs font-extrabold text-[#191F28]">실시간 상담방 (역삼 오피스 고객)</span>
                   </div>
-                  <span className="text-[10px] font-bold text-[#E5E8EB] bg-[#4E5968] py-0.5 px-2 rounded-full">Toss Safe</span>
+                  <span className="text-[10px] font-bold text-[#E5E8EB] bg-[#4E5968] py-0.5 px-2 rounded-full col-span-1 select-none">Toss Safe</span>
                 </div>
 
                 {/* Animated Chat Log Scrollable mock */}
@@ -1079,7 +1100,7 @@ export default function App() {
                 </div>
 
                 {/* Chat input block */}
-                <div className="flex items-center space-x-2 pt-2 border-t border-gray-50">
+                <div className="flex items-center space-x-2 pt-2 border-t border-gray-50 font-semibold">
                   <input
                     type="text"
                     placeholder="고객에게 안심 메시지 전송..."
@@ -1110,21 +1131,60 @@ export default function App() {
                     </button>
                   </div>
                 ) : (
-                  jobs.filter(j => j.isUserCreated).map((job) => (
-                    <div key={job.id} className="bg-white p-5 rounded-[24px] border border-black/5 space-y-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-bold text-[#8B95A1] bg-[#F2F4F6] px-2 py-0.5 rounded-md">
-                          진행 상황: 역경매 입찰 대기중
-                        </span>
-                        <span className="text-xs font-bold text-[#3182F6]">
-                          {job.currentPrice.toLocaleString()}원
-                        </span>
+                  jobs.filter(j => j.isUserCreated).map((job) => {
+                    const isBidding = job.status === "bidding";
+                    const isMatched = job.status === "matched";
+                    const isCompleted = job.status === "completed";
+                    
+                    return (
+                      <div 
+                        key={job.id} 
+                        onClick={() => {
+                          setSelectedJob(job);
+                          setIsBottomSheetOpen(true);
+                        }}
+                        className="bg-white p-5 rounded-[24px] border border-black/5 space-y-3 cursor-pointer hover:border-black/10 hover:shadow-xs active:scale-98 transition-all"
+                      >
+                        <div className="flex justify-between items-center">
+                          {isBidding ? (
+                            <span className="text-[10px] font-bold text-[#3182F6] bg-[#3182F6]/10 px-2.5 py-0.5 rounded-md">
+                              역경매 입찰 중 ({job.bidsCount}회)
+                            </span>
+                          ) : isMatched ? (
+                            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2.5 py-0.5 rounded-md animate-pulse">
+                              실시간 헬퍼 매칭 완료
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-md">
+                              안심 정산 종결
+                            </span>
+                          )}
+                          <span className="text-xs font-bold text-[#191F28]">
+                            {job.currentPrice.toLocaleString()}원
+                          </span>
+                        </div>
+                        
+                        <div>
+                          <h4 className="text-sm font-bold text-[#191F28] leading-tight">{job.title}</h4>
+                          <p className="text-[11px] text-[#8B95A1] font-semibold mt-1">카테고리: {job.category} · {job.location}</p>
+                        </div>
+
+                        {isMatched && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPaymentErrand(job);
+                              setPaymentStep(0);
+                            }}
+                            className="w-full py-3 bg-[#3182F6] hover:bg-[#1b64d6] text-white font-extrabold text-xs rounded-xl flex items-center justify-center space-x-1.5 shadow-sm transition-colors mt-2"
+                          >
+                            <Coins className="w-4 h-4" />
+                            <span>토스페이 안심 정산하기</span>
+                          </button>
+                        )}
                       </div>
-                      
-                      <h4 className="text-sm font-bold text-[#191F28]">{job.title}</h4>
-                      <p className="text-xs text-[#8B95A1] font-semibold">인접 매칭 입찰 횟수: {job.bidsCount}회</p>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
@@ -1181,6 +1241,21 @@ export default function App() {
 
       </div>
 
+      {/* Toss style Floating Toast */}
+      <AnimatePresence>
+        {toast && toast.visible && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="absolute bottom-24 left-4 right-4 bg-[#191F28]/95 backdrop-blur-md text-white py-3.5 px-5 rounded-2xl text-[11px] font-bold shadow-xl z-50 flex items-center space-x-2 border border-white/10"
+          >
+            <Sparkles className="w-4 h-4 text-[#3182F6] shrink-0 animate-pulse" />
+            <span className="flex-1 tracking-tight leading-snug">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Slide Up Bottom Sheet Detail Modal */}
       <BottomSheet 
         isOpen={isBottomSheetOpen}
@@ -1188,8 +1263,229 @@ export default function App() {
         selectedJob={selectedJob}
         onAcceptJob={handleAcceptJob}
         onPlaceManualBid={handlePlaceManualBid}
+        onStartPayment={(job) => {
+          setPaymentErrand(job);
+          setPaymentStep(0);
+        }}
       />
 
+      {/* Toss style Multi-step Payment Funnel Modal representing secure escrow lock */}
+      <AnimatePresence>
+        {paymentStep !== null && paymentErrand && (
+          <div className="absolute inset-0 z-[100] flex flex-col justify-end">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                if (paymentStep !== 2) {
+                  setPaymentStep(null);
+                  setPaymentErrand(null);
+                }
+              }}
+              className="absolute inset-0 bg-black/50 cursor-pointer"
+            />
+
+            {/* Slide up screen container */}
+            <motion.div
+              initial={{ y: "100%" }}
+              animate={{ y: 0 }}
+              exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 220 }}
+              className="relative bg-white rounded-t-[32px] w-full min-h-[460px] max-h-[90%] pb-8 px-6 pt-2 flex flex-col shadow-2xl overflow-hidden select-none"
+            >
+              {/* Grab Handle */}
+              <div className="w-12 h-1 bg-[#E5E8EB] rounded-full mx-auto my-3" />
+
+              {/* Step 1: Amount Confirmation */}
+              {paymentStep === 0 && (
+                <div className="flex-1 flex flex-col justify-between pt-4">
+                  <div className="space-y-6">
+                    <div className="space-y-2 text-center mt-2">
+                      <span className="px-3 py-1 bg-[#3182F6]/10 text-[#3182F6] text-[10px] font-black rounded-full select-none tracking-tight">
+                        Toss 안심 페이 송금
+                      </span>
+                      <h3 className="text-lg font-black text-[#191F28] tracking-tight leading-snug pt-3">
+                        낙찰가 <span className="text-[#3182F6]">{paymentErrand.currentPrice.toLocaleString()}원</span>을<br />
+                        정산 완료할까요?
+                      </h3>
+                      <p className="text-[11px] text-[#8B95A1] font-semibold leading-relaxed px-4 pt-1">
+                        송금 시 토스 안심 보험 혜택이 적용되며, 헬퍼 파트너의 전자 지갑에 수임 금액이 안전하게 전달됩니다.
+                      </p>
+                    </div>
+
+                    <div className="bg-[#F9FAFB] p-4.5 rounded-2xl border border-black/5 text-xs text-[#4E5968] space-y-2 font-semibold">
+                      <div className="flex justify-between">
+                        <span>수령인</span>
+                        <span className="text-[#191F28]">동네보안관 헬퍼님</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>정산 수단</span>
+                        <span className="text-[#191F28]">급해요 안심에스크로 머니</span>
+                      </div>
+                      <div className="flex justify-between border-t border-gray-100 pt-2 text-[11px] text-[#8B95A1]">
+                        <span>수수료 보증 금액</span>
+                        <span className="text-[#3182F6] font-bold">전액 무료 면제</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 pt-6">
+                    <button
+                      onClick={() => setPaymentStep(1)}
+                      className="w-full py-4.5 bg-[#3182F6] hover:bg-[#1b64d6] active:scale-98 text-white text-xs font-black rounded-2xl flex items-center justify-center shadow-md shadow-[#3182F6]/10 transition-transform cursor-pointer"
+                    >
+                      <span>확인하고 정산하기</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setPaymentStep(null);
+                        setPaymentErrand(null);
+                      }}
+                      className="w-full py-3.5 hover:bg-gray-50 active:scale-98 text-[#8B95A1] text-xs font-bold rounded-2xl flex items-center justify-center transition-all cursor-pointer"
+                    >
+                      <span>다음에 하기</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2: Passcode Keypad Screen */}
+              {paymentStep === 1 && (
+                <div className="flex-1 flex flex-col justify-between pt-2">
+                  <div className="space-y-3 text-center">
+                    <h3 className="text-base font-black text-[#191F28] tracking-tight">
+                      간편 결제 비밀번호 입력
+                    </h3>
+                    <p className="text-[11px] text-[#8B95A1] font-semibold">
+                      안심 거래 보안 확인을 위해 6자리 번호를 입력해 주세요
+                    </p>
+
+                    {/* Dot array indicator */}
+                    <div className="flex justify-center items-center space-x-4 py-4">
+                      {[0, 1, 2, 3, 4, 5].map((idx) => {
+                        const isActive = idx < pinInput.length;
+                        return (
+                          <motion.div
+                            key={idx}
+                            animate={{ scale: isActive ? [1, 1.2, 1] : 1 }}
+                            className={`w-3 h-3 rounded-full transition-colors duration-200 ${
+                              isActive 
+                                ? "bg-[#3182F6]" 
+                                : "border-2 border-[#E5E8EB] bg-white"
+                            }`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 3x4 Grid layout numbering pad */}
+                  <div className="grid grid-cols-3 gap-y-3 gap-x-6 pb-2 px-4">
+                    {keypadDigits.slice(0, 9).map((val) => (
+                      <button
+                        key={val}
+                        onClick={() => handleKeypadPress(val)}
+                        className="h-10 rounded-full text-[#191F28] font-black text-base active:bg-gray-100 hover:scale-105 transition-all text-center flex items-center justify-center cursor-pointer"
+                      >
+                        {val}
+                      </button>
+                    ))}
+                    {/* Reset button index 9, delete button */}
+                    <button
+                      onClick={handleKeypadClear}
+                      className="h-10 rounded-full text-[#8B95A1] font-bold text-[11px] active:bg-gray-100 transition-all text-center flex items-center justify-center cursor-pointer"
+                    >
+                      초기화
+                    </button>
+                    <button
+                      onClick={() => handleKeypadPress(keypadDigits[9])}
+                      className="h-10 rounded-full text-[#191F28] font-black text-base active:bg-[#F2F4F6] hover:scale-105 transition-all text-center flex items-center justify-center cursor-pointer"
+                    >
+                      {keypadDigits[9]}
+                    </button>
+                    <button
+                      onClick={handleKeypadDelete}
+                      className="h-10 rounded-full text-[#8B95A1] font-bold text-xs active:bg-[#F2F4F6] transition-all text-center flex items-center justify-center cursor-pointer"
+                    >
+                      지우기
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Completed Transfer visual with sound check effect */}
+              {paymentStep === 2 && (
+                <div className="flex-1 flex flex-col justify-between items-center pt-8">
+                  <div className="flex flex-col items-center space-y-6 text-center mt-6">
+                    <motion.div
+                      initial={{ scale: 0.5, opacity: 0 }}
+                      animate={{ scale: [0.8, 1.25, 1], opacity: 1 }}
+                      transition={{ duration: 0.45, ease: "easeOut" }}
+                      className="w-16 h-16 bg-[#3182F6] rounded-full flex items-center justify-center shadow-lg shadow-[#3182F6]/20"
+                    >
+                      <motion.svg
+                        initial={{ pathLength: 0 }}
+                        animate={{ pathLength: 1 }}
+                        transition={{ duration: 0.4, delay: 0.3 }}
+                        className="w-8 h-8 text-white stroke-current"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth="3.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </motion.svg>
+                    </motion.div>
+
+                    <div className="space-y-1.5 px-4">
+                      <h3 className="text-lg font-black text-[#191F28] tracking-tight">
+                        안전하게 정산되었습니다
+                      </h3>
+                      <p className="text-xs text-[#8B95A1] font-semibold leading-relaxed pt-1 select-none">
+                        상호 합의된 수임 금액 <span className="text-[#191F28] font-black">{paymentErrand.currentPrice.toLocaleString()}원</span>이<br />
+                        헬퍼 파트너의 월렛 및 등록된 계좌 정보로 즉시 전달되었습니다.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      // complete core state transition
+                      setJobs(prev => 
+                        prev.map(j => {
+                          if (j.id === paymentErrand.id) {
+                            return { ...j, status: "completed" };
+                          }
+                          return j;
+                        })
+                      );
+                      // Update profile counts
+                      setUserProfile(prev => ({
+                        ...prev,
+                        completedErrandsCount: prev.completedErrandsCount + 1,
+                        points: Math.max(0, prev.points - paymentErrand.currentPrice)
+                      }));
+                      setRecentNotification(`🎉 [송금 완료] "${paymentErrand.title}" 정산이 완료되었습니다!`);
+                      setPaymentStep(null);
+                      setPaymentErrand(null);
+                      setIsBottomSheetOpen(false);
+                    }}
+                    className="w-full py-4 bg-[#3182F6] hover:bg-[#1b64d6] text-white text-xs font-black rounded-2xl flex items-center justify-center shadow-md cursor-pointer"
+                  >
+                    확인
+                  </button>
+                </div>
+              )}
+
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      </div>
     </AndroidFrame>
   );
 }
