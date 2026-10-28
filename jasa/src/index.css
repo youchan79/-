@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "IBM Plex Sans KR", system-ui, -apple-system, sans-serif;
+  --font-serif: "Noto Serif KR", ui-serif, serif;
+
+  --color-paper: #f7f3ec;
+  --color-card: #fffdf9;
+  --color-ink: #1d2320;
+  --color-muted: #69706b;
+  --color-line: #e3dccf;
+  --color-pine: #2f5d46;
+  --color-pine-dark: #234836;
+  --color-pine-soft: #e2ebe4;
+  --color-sun: #f6c453;
+  --color-sun-soft: #fcf0d2;
+  --color-danger: #b4432f;
+  --color-danger-soft: #f8e3dd;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  ::selection {
+    background: var(--color-sun);
+  }
+}
+
+/* 버튼·카드·입력칸 공통 모양 */
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+@utility btn-primary {
+  @apply btn bg-pine text-white hover:bg-pine-dark;
+}
+@utility btn-ghost {
+  @apply btn border border-line bg-card text-ink hover:border-pine/40 hover:bg-pine-soft/50;
+}
+@utility btn-sun {
+  @apply btn bg-sun text-ink hover:brightness-95;
+}
+@utility card {
+  @apply rounded-2xl border border-line bg-card;
+}
+@utility field {
+  @apply w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-[15px] outline-none transition placeholder:text-muted/70 focus:border-pine focus:ring-2 focus:ring-pine/15;
+}
+@utility label {
+  @apply mb-1.5 block text-sm font-semibold text-ink;
+}
+@utility chip {
+  @apply inline-flex items-center rounded-full bg-pine-soft px-2.5 py-0.5 text-xs font-semibold text-pine-dark;
+}
+
+/* AI 분석 결과(마크다운) */
+.prose-jasa h2 {
+  @apply mt-6 mb-2 font-serif text-lg font-bold text-pine-dark first:mt-0;
+}
+.prose-jasa ul {
+  @apply list-disc space-y-1.5 pl-5;
+}
+.prose-jasa ol {
+  @apply list-decimal space-y-1.5 pl-5;
+}
+.prose-jasa p {
+  @apply my-2 leading-relaxed;
+}
+.prose-jasa li {
+  @apply leading-relaxed;
+}
+.prose-jasa strong {
+  @apply font-semibold text-ink;
+}
+.prose-jasa a {
+  @apply text-pine underline underline-offset-2;
+}
