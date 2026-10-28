@@ -5,7 +5,7 @@
 
   ND.createDemoStore = function () {
     const KEY = 'nd-demo-v1';
-    const fresh = () => ({ phase: 'registration', users: {}, keys: {}, owned: [], swipes: {}, inbox: {}, hidden: {}, admin: false });
+    const fresh = () => ({ phase: 'registration', users: {}, keys: {}, owned: [], swipes: {}, inbox: {}, privates: {}, hidden: {}, admin: false });
     let st = fresh();
     try {
       const saved = JSON.parse(localStorage.getItem(KEY));
@@ -16,7 +16,7 @@
     const base = Date.parse('2026-11-16T11:10:00+09:00');
     const samples = ND.SAMPLE_PROFILES.map((p, i) => Object.assign({}, p, { done: i % 3 === 0, createdAt: base + i * 53000 }));
 
-    const subs = { settings: new Set(), profiles: new Set(), swipes: new Map(), inbox: new Map() };
+    const subs = { settings: new Set(), profiles: new Set(), swipes: new Map(), inbox: new Map(), privates: new Map() };
     const later = (fn) => setTimeout(fn, 0);
     const clone = (v) => JSON.parse(JSON.stringify(v));
 
@@ -40,7 +40,8 @@
         const j = Math.floor(Math.random() * (i + 1));
         [ids[i], ids[j]] = [ids[j], ids[i]];
       }
-      return ids.slice(0, 5).map((id, k) => ({ id, at: now - k * 95000 }));
+      // ln '#demo': 시연 모드에서는 실제 링크드인 대신 안내만 띄웁니다
+      return ids.slice(0, 5).map((id, k) => ({ id, at: now - k * 95000, ln: '#demo' }));
     }
 
     return {
@@ -83,6 +84,14 @@
       watchInbox(pid, cb) {
         return watchKeyed(subs.inbox, pid, cb, () => st.inbox[pid] || []);
       },
+      watchPrivate(pid, cb) {
+        return watchKeyed(subs.privates, pid, cb, () => st.privates[pid] || { linkedin: '' });
+      },
+      async savePrivate(pid, linkedin) {
+        st.privates[pid] = { linkedin };
+        save();
+        emitKeyed(subs.privates, pid, st.privates[pid]);
+      },
       async saveSwipe(pid, swipes, change, done) {
         st.swipes[pid] = { likes: swipes.likes.slice(), passes: swipes.passes.slice() };
         if (typeof done === 'boolean' && st.users[pid]) st.users[pid].done = done;
@@ -103,6 +112,8 @@
         save();
         emitProfiles();
       },
+      async addTestProfiles() { /* 시연 모드에는 이미 예시 참가자가 들어 있습니다 */ },
+      async resetAll() { this.reset(); emitProfiles(); emitSettings(); },
       reset() { try { localStorage.removeItem(KEY); } catch (e) { /* 무시 */ } st = fresh(); },
     };
   };

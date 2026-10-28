@@ -25,7 +25,7 @@ html, body { height: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 16px/1.45 var(--font); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
-  overscroll-behavior: none;
+  overscroll-behavior: none; word-break: keep-all; overflow-wrap: break-word;
 }
 [hidden] { display: none !important; }
 h1, h2, h3, p, ul { margin: 0; }
@@ -157,6 +157,7 @@ html.standalone .app { padding-top: env(safe-area-inset-top, 0px); }
 .main { position: relative; }
 .tab { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-left: var(--gutter-l); padding-right: var(--gutter-r); }
 .tab-scroll { overflow-y: auto; overflow-x: hidden; padding-bottom: 24px; }
+.tab-scroll > * { flex-shrink: 0; }
 .topbar { display: flex; align-items: center; gap: 12px; height: 60px; flex: none; }
 .top-pill { height: 40px; display: inline-flex; align-items: center; padding: 0 18px; border-radius: 999px; background: #000; border: 1px solid #2c2c30; font-weight: 800; font-size: 15px; }
 .top-count { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; }
@@ -397,3 +398,16 @@ td .ghost-btn { min-height: 36px; padding: 0 14px; font-size: 13.5px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; animation: none !important; }
 }
+
+/* ---------- 추가: 링크드인, 테스트 도구 ---------- */
+.ln-btn {
+  display: inline-flex; align-items: center; gap: 8px; align-self: flex-start; height: 40px; padding: 0 16px; border-radius: 999px;
+  background: #0a66c2; color: #fff; font-size: 14.5px; font-weight: 800; text-decoration: none; border: 0;
+}
+.ln-btn svg { width: 18px; height: 18px; }
+.li-card .ln-btn { margin-top: 4px; }
+.row-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.ghost-btn.danger { color: var(--like); border-color: rgba(255, 68, 88, 0.5); }
+.tag-test { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; margin-left: 6px; border-radius: 5px; background: var(--surface-2); color: var(--text-2); font-size: 11.5px; font-weight: 700; }
+.logo-auto { margin-top: 14px; color: var(--ok); font-size: 14.5px; font-weight: 700; }
+.li-ln { margin-top: 12px; }

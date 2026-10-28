@@ -4,7 +4,8 @@
 //   owners/{pid}/uids/{uid}     이 기기가 프로필 주인임을 증명
 //   profiles/{pid}              공개 프로필
 //   swipes/{pid}                내가 고른 사람·넘긴 사람 (본인만 읽음)
-//   inbox/{pid}/likes/{보낸 pid} 나를 고른 사람 (받은 사람과 보낸 사람만 읽음)
+//   private/{pid}               내 링크드인 주소 (본인만 읽음)
+//   inbox/{pid}/likes/{보낸 pid} 나를 고른 사람 + 보낸 사람의 링크드인 (받은 사람과 보낸 사람만 읽음)
 //   settings/event              진행 단계 (운영자만 바꿈)
 //   admins/{uid}                운영자 기기
 (function () {
@@ -30,6 +31,14 @@
     const uid = auth.currentUser.uid;
 
     const { doc, getDoc, setDoc, updateDoc, collection, onSnapshot, writeBatch, serverTimestamp } = fsM;
+    // 쓰기 묶음은 한 번에 500건까지라 나눠서 보냅니다.
+    async function commitInChunks(ops) {
+      for (let i = 0; i < ops.length; i += 400) {
+        const b = writeBatch(db);
+        ops.slice(i, i + 400).forEach((op) => op(b));
+        await b.commit();
+      }
+    }
     const ms = (t) => (t && typeof t.toMillis === 'function' ? t.toMillis() : 0);
     const report = (label) => (err) => { console.error(label, err); if (ND.onStoreError) ND.onStoreError(err); };
 
@@ -49,12 +58,19 @@
         await setDoc(doc(db, 'owners', pid, 'uids', uid), { k: hash });
       },
       // existingPid: 키는 남아 있는데 프로필이 지워진 경우, 이미 claim한 같은 id로 다시 만듭니다.
+      // 이때 예전에 고른 기록이 남아 있으면 비우고, 예전에 보낸 LIKE도 지웁니다.
       async createProfile(hash, data, existingPid) {
         const pid = existingPid || doc(collection(db, 'profiles')).id;
         const b = writeBatch(db);
         if (!existingPid) {
           b.set(doc(db, 'keys', hash), { pid });
           b.set(doc(db, 'owners', pid, 'uids', uid), { k: hash });
+        } else {
+          const old = await getDoc(doc(db, 'swipes', pid));
+          if (old.exists()) {
+            (old.data().likes || []).forEach((to) => b.delete(doc(db, 'inbox', to, 'likes', pid)));
+            b.set(doc(db, 'swipes', pid), { likes: [], passes: [], updatedAt: serverTimestamp() });
+          }
         }
         b.set(doc(db, 'profiles', pid), Object.assign({}, data, {
           hidden: false, done: false, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
@@ -81,13 +97,23 @@
       },
       watchInbox(pid, cb) {
         return onSnapshot(collection(db, 'inbox', pid, 'likes'),
-          (qs) => cb(qs.docs.map((d) => ({ id: d.id, at: ms(d.data().at) || Date.now() }))), report('inbox'));
+          (qs) => cb(qs.docs.map((d) => ({ id: d.id, at: ms(d.data().at) || Date.now(), ln: d.data().ln || '' }))), report('inbox'));
       },
-      // change: {add: 고른 사람 pid} | {remove: 되돌린 사람 pid} | null, done: true/false/null(그대로)
+      watchPrivate(pid, cb) {
+        return onSnapshot(doc(db, 'private', pid), (s) => cb(s.exists() ? s.data() : { linkedin: '' }), report('private'));
+      },
+      // 링크드인 주소를 저장하고, 이미 고른 사람에게 보낸 LIKE에도 새 주소를 반영합니다.
+      async savePrivate(pid, linkedin, likes) {
+        const b = writeBatch(db);
+        b.set(doc(db, 'private', pid), { linkedin, updatedAt: serverTimestamp() });
+        (likes || []).forEach((to) => b.set(doc(db, 'inbox', to, 'likes', pid), { ln: linkedin }, { merge: true }));
+        await b.commit();
+      },
+      // change: {add: 고른 사람 pid, ln: 내 링크드인} | {remove: 되돌린 사람 pid} | null, done: true/false/null(그대로)
       async saveSwipe(pid, swipes, change, done) {
         const b = writeBatch(db);
         b.set(doc(db, 'swipes', pid), { likes: swipes.likes, passes: swipes.passes, updatedAt: serverTimestamp() });
-        if (change && change.add) b.set(doc(db, 'inbox', change.add, 'likes', pid), { at: serverTimestamp() });
+        if (change && change.add) b.set(doc(db, 'inbox', change.add, 'likes', pid), { at: serverTimestamp(), ln: change.ln || '' });
         if (change && change.remove) b.delete(doc(db, 'inbox', change.remove, 'likes', pid));
         if (typeof done === 'boolean') b.update(doc(db, 'profiles', pid), { done });
         await b.commit();
@@ -103,6 +129,27 @@
       },
       async setHidden(pid, hidden) {
         await updateDoc(doc(db, 'profiles', pid), { hidden });
+      },
+      // 리허설용 가상 참가자를 넣습니다 (test: true). 이미 있는 id는 덮어씁니다.
+      async addTestProfiles(list) {
+        await commitInChunks(list.map((p) => (b) => b.set(doc(db, 'profiles', p.id), Object.assign({}, p.data, {
+          test: true, hidden: false, done: false, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+        }))));
+      },
+      // 전체 초기화: 지금 있는 프로필과 그 사람들의 고른 기록·LIKE·링크드인을 지우고 등록 단계로 되돌립니다.
+      // LIKE 목록은 운영자도 읽을 수 없으므로, 모든 (받은 사람, 보낸 사람) 조합을 지웁니다.
+      async resetAll(pids) {
+        const ops = [];
+        pids.forEach((to) => pids.forEach((from) => {
+          if (to !== from) ops.push((b) => b.delete(doc(db, 'inbox', to, 'likes', from)));
+        }));
+        pids.forEach((pid) => {
+          ops.push((b) => b.delete(doc(db, 'swipes', pid)));
+          ops.push((b) => b.delete(doc(db, 'private', pid)));
+          ops.push((b) => b.delete(doc(db, 'profiles', pid)));
+        });
+        await commitInChunks(ops);
+        await setDoc(doc(db, 'settings', 'event'), { phase: 'registration', updatedAt: serverTimestamp() });
       },
     };
   };

@@ -42,6 +42,7 @@
     view: null,
     tab: 'swipe',
     likesTab: 'in',
+    myLinkedin: '',
     unsub: [],
   };
 
@@ -61,6 +62,7 @@
     quote: '<path d="M10 7H6.5A2.5 2.5 0 0 0 4 9.5V13h5v5H4M20 7h-3.5A2.5 2.5 0 0 0 14 9.5V13h5v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>',
     lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="2.2" fill="none"/>',
     plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>',
+    external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" stroke="currentColor" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   };
   function icon(name) {
     const span = document.createElement('span');
@@ -133,11 +135,39 @@
   // ---------- 로고·카드 ----------
   const monoColor = (company) => MONO_COLORS[hash32(company || '') % MONO_COLORS.length];
 
+  // 회사 이름 → 로고 대응표(logos/logos.js). 띄어쓰기, 영문 대소문자, (주)·㈜·주식회사는 무시하고 맞춥니다.
+  const normCompany = (v) => String(v || '').normalize('NFC').replace(/\(주\)|㈜|주식회사|\s+/g, '').toLowerCase();
+  const LOGO_MAP = new Map(Object.entries(window.ND_LOGOS || {}).map(([k, v]) => [normCompany(k), v]));
+  const mappedLogo = (company) => LOGO_MAP.get(normCompany(company)) || null;
+  // 대응표에 있으면 그 로고, 없으면 참가자가 올린 로고
+  const logoFor = (p) => mappedLogo(p.company) || p.logo || null;
+
+  // 링크드인 주소를 https://www.linkedin.com/in/아이디 형태로 맞춥니다. 빈 값은 '', 형식이 틀리면 null.
+  function normLinkedin(v) {
+    const s = String(v || '').trim();
+    if (!s) return '';
+    const m = s.match(/^(?:https?:\/\/)?(?:[a-z]{2,3}\.)?linkedin\.com\/(in|pub)\/([^\s?#]+)/i);
+    const id = m ? m[2].replace(/\/+$/, '') : '';
+    return id ? 'https://www.linkedin.com/' + m[1].toLowerCase() + '/' + id : null;
+  }
+  // 서로 고른 사람의 링크드인 (상대가 나에게 LIKE를 보낼 때 함께 보낸 주소)
+  const lnFrom = (pid) => (S.inbox.find((x) => x.id === pid) || {}).ln || '';
+  function linkedinBtn(url) {
+    if (!url) return null;
+    if (url === '#demo') {
+      return h('button', { type: 'button', class: 'ln-btn', onclick: (e) => { e.stopPropagation(); toast('시연 모드라 열리지 않아요. 실제로는 상대의 링크드인이 열려요.'); } },
+        icon('external'), '링크드인 보기');
+    }
+    return h('a', { class: 'ln-btn', href: url, target: '_blank', rel: 'noopener noreferrer', onclick: (e) => e.stopPropagation() },
+      icon('external'), '링크드인 보기');
+  }
+
   function logoEl(p) {
     const box = h('div', { class: 'logo' });
     const label = (p.company || '회사') + ' 로고';
-    if (p.logo) {
-      box.append(h('img', { src: p.logo, alt: label, draggable: 'false' }));
+    const src = logoFor(p);
+    if (src) {
+      box.append(h('img', { src, alt: label, draggable: 'false' }));
     } else {
       box.classList.add('mono-logo');
       box.style.setProperty('--mono', monoColor(p.company));
@@ -151,8 +181,9 @@
   // 사진 자리: 로고를 크게 흐려 깐 배경 + 가운데 로고
   function visualEls(p) {
     let bg;
-    if (p.logo) {
-      bg = h('img', { class: 'v-bg', src: p.logo, alt: '', 'aria-hidden': 'true', draggable: 'false' });
+    const src = logoFor(p);
+    if (src) {
+      bg = h('img', { class: 'v-bg', src, alt: '', 'aria-hidden': 'true', draggable: 'false' });
     } else {
       bg = h('div', { class: 'v-bg mono', 'aria-hidden': 'true' });
       bg.style.setProperty('--mono', monoColor(p.company));
@@ -300,6 +331,8 @@
       onData();
     }));
     S.unsub.push(S.store.watchInbox(pid, (list) => { S.inbox = list; onData(); }));
+    S.myLinkedin = '';
+    S.unsub.push(S.store.watchPrivate(pid, (v) => { S.myLinkedin = v.linkedin || ''; onData(); }));
   }
   function signOut() {
     S.unsub.forEach((u) => u());
@@ -312,12 +345,12 @@
   }
 
   // ---------- 가입·프로필 입력 (한 화면에 질문 하나) ----------
-  const PROFILE_STEPS = ['company', 'logo', 'job', 'exp', 'career', 'topic', 'tags'];
+  const PROFILE_STEPS = ['company', 'logo', 'job', 'exp', 'career', 'topic', 'tags', 'contact'];
   const OB = { mode: null, steps: [], i: 0, d: null, hash: null, pid: null, busy: false };
 
   function blankDraft() {
     return { name: '', pin: '', company: '', companyIntro: '', logo: null, title: '', field: '', years: '',
-      experiences: ['', '', ''], careers: [], topic: '', keywords: [], lookingFor: [], extraKeywords: [] };
+      experiences: ['', '', ''], careers: [], topic: '', keywords: [], lookingFor: [], extraKeywords: [], linkedin: '' };
   }
   function draftFrom(p) {
     const d = blankDraft();
@@ -326,6 +359,7 @@
       title: p.title, field: p.field, years: p.years, topic: p.topic,
       keywords: (p.keywords || []).slice(), lookingFor: (p.lookingFor || []).slice(),
       careers: careersOf(p).map((c) => Object.assign({}, c)),
+      linkedin: S.myLinkedin,
     });
     const ex = (p.experiences || []).slice(0, 3);
     d.experiences = [ex[0] || '', ex[1] || '', ex[2] || ''];
@@ -364,6 +398,8 @@
     $('in-topic').value = d.topic;
     $('in-topic').placeholder = '예) ' + (ex.topic || '');
     $('topic-count').textContent = d.topic.length + '/60';
+    $('in-linkedin').value = d.linkedin;
+    $('linkedin-error').hidden = true;
     const exExps = ex.experiences || [];
     $('in-exps').replaceChildren(...[0, 1, 2].map((i) => h('input', {
       class: 'box-input', type: 'text', maxlength: 60, 'aria-label': '대표 경험 ' + (i + 1),
@@ -440,7 +476,14 @@
     const d = OB.d;
     const slot = $('logo-slot');
     const badge = $('logo-badge');
-    if (d.logo || cleanText(d.company, 30)) {
+    const mapped = mappedLogo(d.company);
+    $('logo-title').textContent = mapped ? '회사 로고를 찾았어요' : '회사 로고를 추가하세요';
+    $('logo-help').textContent = mapped
+      ? '행사 참가 명단에 있는 로고가 자동으로 들어가요. 얼굴 사진 대신 카드에 보여요.'
+      : '얼굴 사진 대신 카드에 들어가요. 없으면 회사 이름 첫 글자로 만들어 드려요.';
+    slot.htmlFor = mapped ? '' : 'in-logo';
+    badge.hidden = !!mapped;
+    if (mapped || d.logo || cleanText(d.company, 30)) {
       slot.replaceChildren(logoEl({ logo: d.logo, company: d.company }));
       slot.classList.add('filled');
     } else {
@@ -494,15 +537,19 @@
     if (id === 'job') return !!cleanText(d.title, 30) && !!d.field && !!d.years;
     if (id === 'exp') return d.experiences.some((x) => cleanText(x, 60));
     if (id === 'topic') return !!cleanText(d.topic, 60);
+    if (id === 'contact') return normLinkedin(d.linkedin) !== null;
     return true;
   }
   function nextLabel(id) {
     const d = OB.d;
     if (id === 'welcome') return '시작하기';
     if (id === 'rules') return '동의합니다';
-    if (id === 'logo') return d.logo ? '계속' : '로고 없이 계속';
+    if (id === 'logo') return d.logo || mappedLogo(d.company) ? '계속' : '로고 없이 계속';
     if (id === 'career') return d.careers.some((c) => cleanText(c.org, 30) || cleanText(c.role, 30)) ? '계속' : '건너뛰기';
-    if (id === 'tags') return OB.mode === 'edit' ? '저장하기' : '완료';
+    if (id === 'contact') {
+      if (OB.mode === 'edit') return '저장하기';
+      return normLinkedin(d.linkedin) ? '완료' : '건너뛰고 완료';
+    }
     return '계속';
   }
   function syncNext() {
@@ -523,7 +570,7 @@
     $('ob-foot-note').hidden = id !== 'welcome';
     $('ob-body').scrollTop = 0;
     syncNext();
-    const focusTarget = { name: 'in-name', pin: 'in-pin', company: 'in-company', job: 'in-title', topic: 'in-topic' }[id];
+    const focusTarget = { name: 'in-name', pin: 'in-pin', company: 'in-company', job: 'in-title', topic: 'in-topic', contact: 'in-linkedin' }[id];
     if (focusTarget) setTimeout(() => { if (S.view === 'onboard' && stepId() === id) $(focusTarget).focus({ preventScroll: true }); }, 60);
   }
 
@@ -594,10 +641,13 @@
 
   async function saveProfile() {
     const data = collectProfile();
+    const ln = normLinkedin(OB.d.linkedin) || '';
     OB.busy = true; syncNext();
     try {
       if (OB.mode === 'edit') {
         await S.store.updateProfile(S.pid, data);
+        if (ln !== S.myLinkedin) await S.store.savePrivate(S.pid, ln, S.swipes.likes);
+        S.myLinkedin = ln;
         S.me = Object.assign({}, S.me, data);
         S.editing = false;
         OB.mode = null;
@@ -607,7 +657,9 @@
         const name = OB.d.name;
         S.creating = true;
         const pid = await S.store.createProfile(OB.hash, Object.assign({ name }, data), OB.pid);
+        if (ln || OB.pid) await S.store.savePrivate(pid, ln, []);
         await enterAs(pid);
+        S.myLinkedin = ln;
         S.me = S.profiles.get(pid) || Object.assign({ id: pid, name, hidden: false, done: false }, data);
         S.creating = false;
         OB.mode = null;
@@ -797,7 +849,8 @@
     S.last = { id, kind };
     const finished = likes.length >= MAX || S.deckOrder.length === 0;
     const wasDone = !!(S.me && S.me.done);
-    enqueue(() => S.store.saveSwipe(S.pid, { likes, passes }, kind === 'like' ? { add: id } : null, finished && !wasDone ? true : null));
+    const ln = S.myLinkedin;
+    enqueue(() => S.store.saveSwipe(S.pid, { likes, passes }, kind === 'like' ? { add: id, ln } : null, finished && !wasDone ? true : null));
     await flyOut(kind);
     acting = false;
     S.renderedTop = null;
@@ -849,7 +902,7 @@
     $('seg-in').setAttribute('aria-pressed', String(S.likesTab === 'in'));
     $('seg-out').setAttribute('aria-pressed', String(S.likesTab === 'out'));
 
-    const key = [S.likesTab, open, S.phase, inList.map((x) => x.p.id + ':' + (x.p.updatedAt || '')).join(','),
+    const key = [S.likesTab, open, S.phase, inList.map((x) => x.p.id + ':' + (x.p.updatedAt || '') + ':' + lnFrom(x.p.id)).join(','),
       mine.map((p) => p.id + ':' + (p.updatedAt || '')).join(',')].join('|');
     if (key === likesKey) return;
     likesKey = key;
@@ -889,12 +942,16 @@
             h('span', { class: 'li-sub', text: p.company + ' · ' + p.title }))),
         h('button', { type: 'button', class: 'li-quote', onclick: open },
           h('span', { class: 'li-q-k' }, icon('quote'), '이런 이야기를 나누고 싶어요'),
-          h('span', { class: 'li-q-v', text: p.topic }))));
+          h('span', { class: 'li-q-v', text: p.topic }))),
+      mutual ? h('div', { class: 'li-ln' }, linkedinBtn(lnFrom(p.id))) : null);
   }
 
   // --- 프로필 탭 ---
   let meKey = '';
   function renderMeTab() {
+    $('me-linkedin').textContent = S.myLinkedin
+      ? '링크드인: ' + S.myLinkedin.replace('https://www.', '') + ' (서로 고른 사람에게만 보여요)'
+      : '링크드인을 넣으면 서로 고른 사람에게만 보여요. 프로필 수정에서 추가할 수 있어요.';
     const key = JSON.stringify(S.me);
     if (key === meKey) return;
     meKey = key;
@@ -912,6 +969,7 @@
       h('div', { class: 'sh-content' },
         h('h2', { class: 'sh-name' }, p.name, h('span', { class: 'ci-years', text: p.years })),
         mutual ? h('span', { class: 'li-mutual' }, '서로 선택') : null,
+        mutual ? linkedinBtn(lnFrom(p.id)) : null,
         h('div', { class: 'sh-lines' }, line('briefcase', p.title + ' · ' + p.field), line('building', p.company)),
         sec('이런 이야기를 나누고 싶어요', h('p', { class: 'sh-quote', text: p.topic })),
         p.companyIntro ? sec('회사가 하는 일', h('p', { text: p.companyIntro })) : null,
@@ -930,18 +988,52 @@
 
   // ---------- 운영자 ----------
   let pendingPhase = null;
+  let resetPending = false;
+  let adminBusy = false;
+  async function adminTask(fn, done) {
+    if (adminBusy) return;
+    adminBusy = true;
+    ['test-add', 'test-reset', 'reset-yes'].forEach((id) => { $(id).disabled = true; });
+    try { await fn(); toast(done); }
+    catch (ex) { console.error(ex); toast('처리하지 못했어요. 운영자 PIN으로 다시 들어와 주세요.'); }
+    finally {
+      adminBusy = false;
+      ['test-add', 'test-reset', 'reset-yes'].forEach((id) => { $(id).disabled = false; });
+      render();
+    }
+  }
   async function enterAdmin() {
     S.admin = await S.store.isAdmin();
     render();
   }
   const entryUrl = () => location.href.split('#')[0];
+  // QR 라이브러리는 운영자 화면에서만 쓰므로 그때 불러옵니다 (참가자 휴대폰은 내려받지 않음).
+  const QR_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+  let qrLoading = null;
+  function loadQr() {
+    if (window.QRCode) return Promise.resolve();
+    if (!qrLoading) {
+      qrLoading = new Promise((resolve, reject) => {
+        const tag = document.createElement('script');
+        tag.src = QR_SRC;
+        tag.onload = resolve;
+        tag.onerror = () => { qrLoading = null; reject(new Error('qr')); };
+        document.head.append(tag);
+      });
+    }
+    return qrLoading;
+  }
   function drawQr(el, size) {
-    if (!window.QRCode) { setTimeout(() => drawQr(el, size), 300); return; }
     if (el.dataset.url === entryUrl()) return;
     el.dataset.url = entryUrl();
-    el.replaceChildren();
-    // eslint-disable-next-line no-new
-    new window.QRCode(el, { text: entryUrl(), width: size, height: size, colorDark: '#111111', colorLight: '#ffffff', correctLevel: window.QRCode.CorrectLevel.M });
+    loadQr().then(() => {
+      el.replaceChildren();
+      // eslint-disable-next-line no-new
+      new window.QRCode(el, { text: entryUrl(), width: size, height: size, colorDark: '#111111', colorLight: '#ffffff', correctLevel: window.QRCode.CorrectLevel.M });
+    }).catch(() => {
+      delete el.dataset.url;
+      el.replaceChildren(h('p', { class: 'url', text: 'QR을 불러오지 못했어요. 링크 복사를 쓰세요.' }));
+    });
   }
   const PHASE_TEXT = {
     registration: '프로필 등록 단계로 바꿀까요? 참가자 화면이 대기 화면으로 바뀝니다.',
@@ -956,13 +1048,15 @@
     $('phase-seg').querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.phase === S.phase)));
     $('phase-confirm').hidden = !pendingPhase;
     if (pendingPhase) $('phase-confirm-text').textContent = PHASE_TEXT[pendingPhase];
+    $('reset-confirm').hidden = !resetPending;
+    $('reset-n').textContent = String(S.profiles.size);
     const all = [...S.profiles.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const visible = all.filter((p) => !p.hidden);
     $('st-reg').replaceChildren(String(visible.length), h('small', null, ' / ' + CAP));
     $('st-done').textContent = String(visible.filter((p) => p.done).length);
     $('st-hidden').textContent = String(all.length - visible.length);
     $('admin-rows').replaceChildren(...all.map((p) => h('tr', { class: p.hidden ? 'is-hidden' : null },
-      h('td', { text: p.name }),
+      h('td', null, p.name, p.test ? h('span', { class: 'tag-test' }, '테스트') : null),
       h('td', { class: 'wrap', text: p.company }),
       h('td', { class: 'wrap', text: p.title }),
       h('td', null, h('span', { class: 'state' + (p.done ? ' done' : ''), text: p.done ? '완료' : '진행 전' })),
@@ -1010,6 +1104,9 @@
     $('in-intro').addEventListener('input', (e) => { OB.d.companyIntro = e.target.value; });
     $('in-title').addEventListener('input', (e) => { OB.d.title = e.target.value; syncNext(); });
     $('in-topic').addEventListener('input', (e) => { OB.d.topic = e.target.value; $('topic-count').textContent = e.target.value.length + '/60'; syncNext(); });
+    $('in-linkedin').addEventListener('input', (e) => { OB.d.linkedin = e.target.value; $('linkedin-error').hidden = true; syncNext(); });
+    $('in-linkedin').addEventListener('blur', () => { $('linkedin-error').hidden = normLinkedin(OB.d.linkedin) !== null; });
+    $('company-list').replaceChildren(...Object.keys(window.ND_LOGOS || {}).map((c) => h('option', { value: c })));
     $('kw-add').addEventListener('click', addCustomKeyword);
     $('kw-custom').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomKeyword(); } });
     $('career-add').addEventListener('click', () => {
@@ -1071,6 +1168,22 @@
       render();
     });
     $('phase-no').addEventListener('click', () => { pendingPhase = null; render(); });
+    $('test-add').addEventListener('click', () => {
+      if (S.store.mode === 'demo') { toast('시연 모드에는 예시 참가자가 이미 들어 있어요.'); return; }
+      const keys = ['name', 'company', 'companyIntro', 'logo', 'title', 'field', 'years', 'careers', 'experiences', 'keywords', 'lookingFor', 'topic'];
+      const list = (ND.SAMPLE_PROFILES || []).map((p) => ({
+        id: 'test-' + p.id,
+        data: Object.fromEntries(keys.map((k) => [k, p[k]])),
+      }));
+      adminTask(() => S.store.addTestProfiles(list), '예시 참가자 ' + list.length + '명을 넣었어요.');
+    });
+    $('test-reset').addEventListener('click', () => { resetPending = true; render(); });
+    $('reset-no').addEventListener('click', () => { resetPending = false; render(); });
+    $('reset-yes').addEventListener('click', () => {
+      resetPending = false;
+      const pids = [...S.profiles.keys()];
+      adminTask(() => S.store.resetAll(pids), '모두 지웠어요. 진행 단계가 프로필 등록으로 돌아갔어요.');
+    });
     $('qr-big').addEventListener('click', () => {
       $('qr-large-url').textContent = entryUrl();
       $('qr-full').hidden = false;

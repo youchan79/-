@@ -25,16 +25,22 @@ service cloud.firestore {
     function list(v, min, max) {
       return v is list && v.size() >= min && v.size() <= max;
     }
+    function linkedin(v) {
+      return v is string && (v == '' || (v.size() <= 200 && v.matches('https://www[.]linkedin[.]com/(in|pub)/[^\\s?#]+')));
+    }
+    // 테스트 참가자(test: true)는 운영자만 만들고, 시연용 SVG 로고를 쓸 수 있습니다.
     function validProfile(d) {
       return d.keys().hasOnly(['name', 'company', 'companyIntro', 'logo', 'title', 'field', 'years',
                                'careers', 'experiences', 'keywords', 'lookingFor', 'topic',
-                               'hidden', 'done', 'createdAt', 'updatedAt'])
+                               'hidden', 'done', 'test', 'createdAt', 'updatedAt'])
+        && d.get('test', false) is bool
         && str(d.name, 1, 20)
         && str(d.company, 1, 30)
         && str(d.get('companyIntro', ''), 0, 40)
         && (d.get('logo', null) == null
             || (d.logo is string && d.logo.size() <= 150000
-                && d.logo.matches('data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+')))
+                && (d.logo.matches('data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+')
+                    || (d.get('test', false) == true && d.logo.matches('data:image/svg[+]xml;charset=utf-8,[^<>"]*')))))
         && str(d.title, 1, 30)
         && str(d.field, 1, 20)
         && str(d.years, 1, 20)
@@ -66,16 +72,30 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/keys/$(request.resource.data.k)).data.pid == pid;
     }
 
-    // 공개 프로필: 참가자 누구나 읽고, 주인만 고칩니다. 운영자는 숨기기만 할 수 있습니다.
+    // 공개 프로필: 참가자 누구나 읽고, 주인만 고칩니다.
+    // 운영자는 숨기기, 테스트 참가자 만들기, 전체 초기화(삭제)만 할 수 있습니다.
     match /profiles/{pid} {
       allow read: if open();
-      allow create: if ownsAfter(pid) && validProfile(request.resource.data)
+      allow create: if validProfile(request.resource.data)
         && request.resource.data.hidden == false
-        && request.resource.data.done == false;
+        && request.resource.data.done == false
+        && ((ownsAfter(pid) && request.resource.data.get('test', false) == false)
+            || (isAdmin() && request.resource.data.get('test', false) == true));
       allow update: if (ownsAfter(pid) && validProfile(request.resource.data)
-                        && request.resource.data.hidden == resource.data.hidden)
+                        && request.resource.data.hidden == resource.data.hidden
+                        && request.resource.data.get('test', false) == resource.data.get('test', false))
                     || (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hidden'])
                         && request.resource.data.hidden is bool);
+      allow delete: if isAdmin();
+    }
+
+    // 내 링크드인 주소(선택): 본인만 읽고 씁니다. 고른 사람에게는 LIKE와 함께 전달됩니다.
+    match /private/{pid} {
+      allow read: if owns(pid);
+      allow create, update: if ownsAfter(pid)
+        && request.resource.data.keys().hasOnly(['linkedin', 'updatedAt'])
+        && linkedin(request.resource.data.linkedin);
+      allow delete: if isAdmin();
     }
 
     // 내가 고른 사람·넘긴 사람: 본인만 읽고 씁니다. 고르기는 최대 5명.
@@ -85,17 +105,20 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['likes', 'passes', 'updatedAt'])
         && list(request.resource.data.likes, 0, 5)
         && list(request.resource.data.passes, 0, 100);
+      allow delete: if isAdmin();
     }
 
-    // 나를 고른 사람: 받은 사람과 보낸 사람만 읽습니다.
+    // 나를 고른 사람: 받은 사람과 보낸 사람만 읽습니다. 운영자도 읽을 수 없습니다.
     // 보낸 사람의 고른 목록(swipes)에 실제로 있어야만 만들 수 있어서 5명 제한을 우회할 수 없습니다.
+    // ln: 보낸 사람의 링크드인 주소(선택). 화면에는 서로 고른 경우에만 보입니다.
     match /inbox/{toPid}/likes/{fromPid} {
       allow read: if owns(toPid) || owns(fromPid);
       allow create, update: if ownsAfter(fromPid) && fromPid != toPid
-        && request.resource.data.keys().hasOnly(['at'])
+        && request.resource.data.keys().hasOnly(['at', 'ln'])
+        && linkedin(request.resource.data.get('ln', ''))
         && toPid in getAfter(/databases/$(database)/documents/swipes/$(fromPid)).data.likes;
-      allow delete: if ownsAfter(fromPid)
-        && !(toPid in getAfter(/databases/$(database)/documents/swipes/$(fromPid)).data.likes);
+      allow delete: if isAdmin()
+        || (ownsAfter(fromPid) && !(toPid in getAfter(/databases/$(database)/documents/swipes/$(fromPid)).data.likes));
     }
 
     // 진행 단계: 모두 읽고 운영자만 바꿉니다.
