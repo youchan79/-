@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="ko" class="standalone">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Networking Day 오늘의 5명</title>
+<meta name="description" content="2026 Physical AI Networking Day 참가자가 네트워킹 전에 대화하고 싶은 5명을 고르고, 나를 고른 사람을 확인하는 페이지">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!-- APP:START -->
+<div class="app" id="app">
+  <header class="bar">
+    <a class="brand" href="#" id="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text"><b>오늘의 5명</b><span>2026 Physical AI Networking Day</span></span>
+    </a>
+    <button type="button" class="btn small ghost" id="bar-profile" hidden>내 프로필</button>
+  </header>
+
+  <div class="demo-banner" id="demo-banner" hidden>
+    <span><b>시연 모드</b> · 예시 프로필 34명, 이 기기에만 저장</span>
+    <span class="spacer"></span>
+    <button type="button" class="linkish" id="demo-phase">단계 바꾸기</button>
+    <a class="linkish" href="#admin">운영자 화면(PIN 0000)</a>
+    <button type="button" class="linkish" id="demo-reset">처음부터</button>
+  </div>
+
+  <main>
+    <section class="screen" id="screen-loading">
+      <div class="center-msg"><b>불러오는 중</b><span>잠시만 기다려 주세요.</span></div>
+    </section>
+
+    <section class="screen" id="screen-error" hidden>
+      <div class="center-msg"><b id="error-title">연결하지 못했어요</b><span id="error-text"></span><pre id="error-detail"></pre></div>
+    </section>
+
+    <!-- 1. 입장 -->
+    <section class="screen" id="screen-entry" hidden>
+      <div class="hero">
+        <p class="eyebrow"><span class="mono">2026.11.16</span> · 팁스타운 S6</p>
+        <h1 class="display">오늘의<span class="five">5</span>명</h1>
+        <p class="lead">네트워킹 시간 전에 대화하고 싶은 사람 5명을 고르고, 나와 대화하고 싶어하는 사람을 확인하세요.</p>
+      </div>
+      <ol class="steps">
+        <li><span class="step-n mono">1</span><div><b>내 프로필 입력</b><span>회사, 직무, 경험을 적어요. 얼굴 사진 대신 회사 로고가 들어가요.</span></div></li>
+        <li><span class="step-n mono">2</span><div><b>카드를 넘기며 5명 고르기</b><span>대화하고 싶으면 오른쪽, 아니면 왼쪽으로 넘겨요.</span></div></li>
+        <li><span class="step-n mono">3</span><div><b>나를 고른 사람 확인</b><span>서로 고른 사람부터 찾아가 인사해요.</span></div></li>
+      </ol>
+      <form id="entry-form" class="stack" novalidate>
+        <div class="field">
+          <label for="entry-name">이름</label>
+          <input id="entry-name" type="text" autocomplete="name" maxlength="20" placeholder="예) 김도현">
+        </div>
+        <div class="field">
+          <label for="entry-pin">휴대폰 번호 뒤 4자리</label>
+          <input id="entry-pin" type="tel" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="예) 1234">
+          <p class="hint">본인 확인에만 쓰고 저장하지 않아요. 다른 기기에서 다시 들어올 때도 같은 이름과 번호를 입력하세요.</p>
+        </div>
+        <label class="check" for="entry-consent">
+          <input type="checkbox" id="entry-consent">
+          <span>입력한 프로필(이름, 회사, 직무, 경력, 경험)을 이 행사 참가자에게 공개하는 데 동의합니다. 정보는 행사가 끝나면 삭제됩니다.</span>
+        </label>
+        <p class="form-error" id="entry-error" hidden></p>
+        <button class="btn primary block" type="submit" id="entry-submit">시작하기</button>
+      </form>
+    </section>
+
+    <!-- 2. 프로필 입력 -->
+    <section class="screen" id="screen-profile" hidden>
+      <form id="profile-form" class="stack" novalidate>
+        <div class="form-head">
+          <h2 id="profile-heading">내 프로필 만들기</h2>
+          <p class="muted">다른 참가자가 카드로 보게 될 내용이에요. 3분이면 충분해요.</p>
+        </div>
+
+        <fieldset class="group">
+          <legend>소속</legend>
+          <div class="logo-pick">
+            <div class="logo lg empty" id="logo-preview"><span>로고</span></div>
+            <div class="logo-actions">
+              <div class="row">
+                <label class="btn small" for="logo-file">로고 올리기</label>
+                <button type="button" class="btn small ghost" id="logo-clear" hidden>지우기</button>
+              </div>
+              <input type="file" id="logo-file" accept="image/*" class="visually-hidden">
+              <p class="hint">없으면 회사 이름 첫 글자로 표시돼요.</p>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-company">회사·기관명<em>필수</em></label>
+            <input id="f-company" type="text" maxlength="30">
+          </div>
+          <div class="field">
+            <label for="f-intro">회사가 하는 일<small>한 줄</small></label>
+            <input id="f-intro" type="text" maxlength="40">
+          </div>
+        </fieldset>
+
+        <fieldset class="group">
+          <legend>직무</legend>
+          <div class="field">
+            <label for="f-name">이름</label>
+            <input id="f-name" type="text" readonly>
+          </div>
+          <div class="field">
+            <label for="f-title">직함·직무<em>필수</em></label>
+            <input id="f-title" type="text" maxlength="30">
+          </div>
+          <div class="field">
+            <span class="label" id="l-field">직무 분야<em>필수</em></span>
+            <div class="chips" id="f-field" role="radiogroup" aria-labelledby="l-field"></div>
+          </div>
+          <div class="field">
+            <label for="f-years">경력 연차<em>필수</em></label>
+            <select id="f-years"></select>
+          </div>
+        </fieldset>
+
+        <fieldset class="group">
+          <legend>커리어</legend>
+          <div class="field">
+            <span class="label">대표 경험·프로젝트<em>1개 이상 필수</em></span>
+            <div class="exp-list" id="f-exps"></div>
+          </div>
+          <div class="field">
+            <span class="label">이전 경력<small>선택, 최대 3개</small></span>
+            <div class="career-list" id="f-careers"></div>
+            <button type="button" class="btn small" id="career-add">경력 추가</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="group">
+          <legend>대화 준비</legend>
+          <div class="field">
+            <label for="f-topic">이런 이야기를 나누고 싶어요<em>필수</em></label>
+            <textarea id="f-topic" maxlength="60" rows="2"></textarea>
+            <p class="hint counter" id="topic-count">0 / 60</p>
+          </div>
+          <div class="field">
+            <span class="label">관심 키워드<small>최대 5개</small></span>
+            <div class="chips" id="f-keywords"></div>
+            <div class="add-chip">
+              <input id="kw-custom" type="text" maxlength="15" placeholder="목록에 없으면 직접 입력">
+              <button type="button" class="btn small" id="kw-add">추가</button>
+            </div>
+          </div>
+          <div class="field">
+            <span class="label">찾고 있어요<small>최대 3개</small></span>
+            <div class="chips" id="f-looking"></div>
+          </div>
+        </fieldset>
+
+        <p class="form-error" id="profile-error" hidden></p>
+        <div class="form-actions">
+          <button type="button" class="btn ghost" id="profile-cancel" hidden>취소</button>
+          <button type="submit" class="btn primary" id="profile-submit">저장하기</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 3. 대기 -->
+    <section class="screen" id="screen-wait" hidden>
+      <div class="status">
+        <p class="pulse">프로필 등록 완료</p>
+        <h2>스와이프 시작을 기다리고 있어요</h2>
+        <p class="muted">운영진이 시작하면 이 화면이 자동으로 카드 화면으로 바뀝니다. 창을 닫아도 같은 이름과 번호로 다시 들어올 수 있어요.</p>
+        <p class="count-line"><span class="big" id="wait-count">0</span><span id="wait-cap">명 등록 · 최대 35명</span></p>
+      </div>
+      <p class="section-label">다른 참가자에게 보이는 내 카드</p>
+      <div id="wait-card"></div>
+      <button type="button" class="btn block" id="wait-edit">프로필 수정</button>
+    </section>
+
+    <!-- 4. 스와이프 -->
+    <section class="screen" id="screen-swipe" hidden>
+      <div class="swipe-top">
+        <div class="picks" id="picks" aria-label="고른 사람"></div>
+        <p class="picks-label"><b id="picks-count">0</b> / <span id="picks-max">5</span>명 골랐어요<br>남은 카드 <span id="deck-left">0</span>장</p>
+      </div>
+      <div class="deck" id="deck"></div>
+      <div>
+        <div class="swipe-actions">
+          <button type="button" class="btn" id="btn-pass">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg>넘기기
+          </button>
+          <button type="button" class="btn undo" id="btn-undo" aria-label="되돌리기" title="되돌리기" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          </button>
+          <button type="button" class="btn primary" id="btn-like">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>대화하고 싶어요
+          </button>
+        </div>
+        <p class="swipe-hint">카드를 오른쪽으로 밀면 고르기, 왼쪽으로 밀면 넘기기</p>
+      </div>
+    </section>
+
+    <!-- 5. 결과 -->
+    <section class="screen" id="screen-result" hidden>
+      <div class="result-head">
+        <p class="eyebrow" id="result-eyebrow">네트워킹 준비 완료</p>
+        <h2 id="result-title">이제 찾아가서 인사해 보세요</h2>
+        <p>명찰의 이름과 회사를 보고 찾아가세요. 카드의 '이런 이야기를 나누고 싶어요'로 말을 꺼내면 됩니다.</p>
+      </div>
+      <div class="more-box" id="more-box" hidden>
+        <span>새로 등록한 <b id="more-n">0</b>명의 카드가 있어요.</span>
+        <button type="button" class="btn small" id="more-btn">이어서 고르기</button>
+      </div>
+      <div class="result-section">
+        <h3>나와 대화하고 싶어하는 사람 <span class="count" id="inbox-count">0</span></h3>
+        <p class="hint">서로 고른 사람이 맨 위에 있어요. 누군가 나를 고르면 바로 추가됩니다.</p>
+        <ul class="people" id="inbox-list"></ul>
+        <p class="empty" id="inbox-empty">아직 없어요. 다른 참가자들이 카드를 넘기는 중이에요.</p>
+      </div>
+      <div class="result-section">
+        <h3>내가 고른 사람 <span class="count" id="mine-count">0</span></h3>
+        <ul class="people" id="mine-list"></ul>
+        <p class="empty" id="mine-empty" hidden>고른 사람이 없어요.</p>
+      </div>
+      <button type="button" class="btn block ghost" id="result-edit">내 프로필 수정</button>
+    </section>
+
+    <!-- 운영자 -->
+    <section class="screen" id="screen-admin" hidden>
+      <div class="form-head">
+        <h2>운영자 화면</h2>
+        <p class="muted">진행 단계를 바꾸면 모든 참가자 화면이 바로 바뀝니다.</p>
+      </div>
+      <form id="admin-login" class="stack panel" novalidate>
+        <div class="field">
+          <label for="admin-pin">운영자 PIN</label>
+          <input id="admin-pin" type="password" autocomplete="off">
+        </div>
+        <p class="form-error" id="admin-error" hidden></p>
+        <button class="btn primary" type="submit">들어가기</button>
+      </form>
+      <div id="admin-panel" class="admin-grid" hidden>
+        <div class="stack">
+          <div class="panel">
+            <h3>진행 단계</h3>
+            <div class="seg" id="phase-seg" role="radiogroup" aria-label="진행 단계">
+              <button type="button" role="radio" data-phase="registration">프로필 등록<small>대기 화면</small></button>
+              <button type="button" role="radio" data-phase="swipe">스와이프 진행<small>카드 넘기기</small></button>
+              <button type="button" role="radio" data-phase="ended">종료<small>결과만 보기</small></button>
+            </div>
+            <div class="confirm" id="phase-confirm" hidden>
+              <p id="phase-confirm-text"></p>
+              <div class="row">
+                <button type="button" class="btn small primary" id="phase-yes">바꾸기</button>
+                <button type="button" class="btn small ghost" id="phase-no">취소</button>
+              </div>
+            </div>
+          </div>
+          <div class="stats">
+            <div class="stat"><div class="n" id="st-reg">0</div><div class="l">등록</div></div>
+            <div class="stat"><div class="n" id="st-done">0</div><div class="l">스와이프 완료</div></div>
+            <div class="stat"><div class="n" id="st-hidden">0</div><div class="l">숨긴 프로필</div></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>입장 QR</h3>
+          <div class="qr-box">
+            <div class="qr" id="qr"></div>
+            <div class="qr-side">
+              <p class="url" id="qr-url"></p>
+              <button type="button" class="btn small" id="qr-big">크게 띄우기</button>
+              <button type="button" class="btn small ghost" id="copy-url">링크 복사</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel" style="grid-column: 1 / -1">
+          <h3>참가자</h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>이름</th><th>회사</th><th>직함</th><th>상태</th><th></th></tr></thead>
+              <tbody id="admin-rows"></tbody>
+            </table>
+          </div>
+          <p class="hint">숨긴 프로필은 다른 참가자의 카드와 결과에 나타나지 않아요. 테스트용·중복 프로필 정리에 쓰세요.</p>
+        </div>
+      </div>
+      <a class="btn ghost" href="#">참가자 화면으로</a>
+    </section>
+  </main>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-backdrop" data-close></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="프로필">
+    <div class="sheet-top"><span id="sheet-badge"></span><button type="button" class="btn small ghost" data-close>닫기</button></div>
+    <div id="sheet-body"></div>
+  </div>
+</div>
+
+<div class="qr-full" id="qr-full" hidden>
+  <h2>QR을 찍고 프로필을 만들어 주세요</h2>
+  <div class="qr" id="qr-large"></div>
+  <p class="url" id="qr-large-url"></p>
+  <button type="button" class="btn" id="qr-close">닫기</button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<!-- APP:END -->
+<script src="config.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" defer></script>
+<script src="sample-profiles.js"></script>
+<script src="store-demo.js"></script>
+<script src="store-firebase.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

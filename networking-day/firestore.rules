@@ -1,0 +1,117 @@
+rules_version = '2';
+
+// 오늘의 5명 (2026 Physical AI Networking Day) Firestore 보안 규칙
+// 콘솔에 붙여넣기 전에 아래 '여기에-관리자-PIN'을 운영진만 아는 값(8자 이상 권장)으로 바꾸세요.
+// 이 PIN은 이 규칙 안에만 있고 웹페이지 코드에는 들어가지 않습니다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 행사가 끝나면 읽기·쓰기를 모두 막습니다. 기간을 바꾸려면 날짜만 고치세요.
+    function open() {
+      return request.auth != null && request.time < timestamp.date(2026, 12, 1);
+    }
+    function owns(pid) {
+      return open() && exists(/databases/$(database)/documents/owners/$(pid)/uids/$(request.auth.uid));
+    }
+    function ownsAfter(pid) {
+      return open() && existsAfter(/databases/$(database)/documents/owners/$(pid)/uids/$(request.auth.uid));
+    }
+    function isAdmin() {
+      return open() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    function str(v, min, max) {
+      return v is string && v.size() >= min && v.size() <= max;
+    }
+    function list(v, min, max) {
+      return v is list && v.size() >= min && v.size() <= max;
+    }
+    function validProfile(d) {
+      return d.keys().hasOnly(['name', 'company', 'companyIntro', 'logo', 'title', 'field', 'years',
+                               'careers', 'experiences', 'keywords', 'lookingFor', 'topic',
+                               'hidden', 'done', 'createdAt', 'updatedAt'])
+        && str(d.name, 1, 20)
+        && str(d.company, 1, 30)
+        && str(d.get('companyIntro', ''), 0, 40)
+        && (d.get('logo', null) == null
+            || (d.logo is string && d.logo.size() <= 150000
+                && d.logo.matches('data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+')))
+        && str(d.title, 1, 30)
+        && str(d.field, 1, 20)
+        && str(d.years, 1, 20)
+        && list(d.get('careers', []), 0, 3)
+        && list(d.experiences, 1, 3)
+        && list(d.get('keywords', []), 0, 5)
+        && list(d.get('lookingFor', []), 0, 3)
+        && str(d.topic, 1, 60)
+        && d.hidden is bool
+        && d.done is bool;
+    }
+
+    // 이름+뒤 4자리 해시 → 프로필 id. 해시를 아는 사람만 한 건씩 조회할 수 있고 목록은 볼 수 없습니다.
+    // 새 키는 아직 없는 프로필만 가리킬 수 있어서 남의 프로필을 가로챌 수 없습니다.
+    match /keys/{hash} {
+      allow get: if open();
+      allow create: if open()
+        && request.resource.data.keys().hasOnly(['pid'])
+        && str(request.resource.data.pid, 1, 40)
+        && !exists(/databases/$(database)/documents/profiles/$(request.resource.data.pid));
+    }
+
+    // 이 기기(익명 uid)가 프로필 주인이라는 표시. 키 해시를 알아야 만들 수 있습니다.
+    match /owners/{pid}/uids/{uid} {
+      allow get: if open() && request.auth.uid == uid;
+      allow create: if open() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['k'])
+        && request.resource.data.k is string
+        && getAfter(/databases/$(database)/documents/keys/$(request.resource.data.k)).data.pid == pid;
+    }
+
+    // 공개 프로필: 참가자 누구나 읽고, 주인만 고칩니다. 운영자는 숨기기만 할 수 있습니다.
+    match /profiles/{pid} {
+      allow read: if open();
+      allow create: if ownsAfter(pid) && validProfile(request.resource.data)
+        && request.resource.data.hidden == false
+        && request.resource.data.done == false;
+      allow update: if (ownsAfter(pid) && validProfile(request.resource.data)
+                        && request.resource.data.hidden == resource.data.hidden)
+                    || (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hidden'])
+                        && request.resource.data.hidden is bool);
+    }
+
+    // 내가 고른 사람·넘긴 사람: 본인만 읽고 씁니다. 고르기는 최대 5명.
+    match /swipes/{pid} {
+      allow read: if owns(pid);
+      allow create, update: if ownsAfter(pid)
+        && request.resource.data.keys().hasOnly(['likes', 'passes', 'updatedAt'])
+        && list(request.resource.data.likes, 0, 5)
+        && list(request.resource.data.passes, 0, 100);
+    }
+
+    // 나를 고른 사람: 받은 사람과 보낸 사람만 읽습니다.
+    // 보낸 사람의 고른 목록(swipes)에 실제로 있어야만 만들 수 있어서 5명 제한을 우회할 수 없습니다.
+    match /inbox/{toPid}/likes/{fromPid} {
+      allow read: if owns(toPid) || owns(fromPid);
+      allow create, update: if ownsAfter(fromPid) && fromPid != toPid
+        && request.resource.data.keys().hasOnly(['at'])
+        && toPid in getAfter(/databases/$(database)/documents/swipes/$(fromPid)).data.likes;
+      allow delete: if ownsAfter(fromPid)
+        && !(toPid in getAfter(/databases/$(database)/documents/swipes/$(fromPid)).data.likes);
+    }
+
+    // 진행 단계: 모두 읽고 운영자만 바꿉니다.
+    match /settings/{id} {
+      allow read: if open();
+      allow write: if isAdmin() && id == 'event'
+        && request.resource.data.keys().hasOnly(['phase', 'updatedAt'])
+        && request.resource.data.phase in ['registration', 'swipe', 'ended'];
+    }
+
+    // 운영자 기기 등록: PIN이 맞아야 만들어집니다. 다른 사람은 읽을 수 없습니다.
+    match /admins/{uid} {
+      allow get: if open() && request.auth.uid == uid;
+      allow create: if open() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['pin'])
+        && request.resource.data.pin == '여기에-관리자-PIN';
+    }
+  }
+}
