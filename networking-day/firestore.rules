@@ -89,12 +89,13 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // 내 링크드인 주소(선택): 본인만 읽고 씁니다. 고른 사람에게는 LIKE와 함께 전달됩니다.
+    // 내 링크드인 주소(선택)와 '대화했어요' 표시: 본인만 읽고 씁니다. 링크드인은 고른 사람에게 LIKE와 함께 전달됩니다.
     match /private/{pid} {
       allow read: if owns(pid);
       allow create, update: if ownsAfter(pid)
-        && request.resource.data.keys().hasOnly(['linkedin', 'updatedAt'])
-        && linkedin(request.resource.data.linkedin);
+        && request.resource.data.keys().hasOnly(['linkedin', 'met', 'updatedAt'])
+        && linkedin(request.resource.data.get('linkedin', ''))
+        && list(request.resource.data.get('met', []), 0, 100);
       allow delete: if isAdmin();
     }
 
@@ -121,12 +122,13 @@ service cloud.firestore {
         || (ownsAfter(fromPid) && !(toPid in getAfter(/databases/$(database)/documents/swipes/$(fromPid)).data.likes));
     }
 
-    // 진행 단계: 모두 읽고 운영자만 바꿉니다.
+    // 진행 단계와 전체 알림: 모두 읽고 운영자만 바꿉니다.
     match /settings/{id} {
       allow read: if open();
       allow write: if isAdmin() && id == 'event'
-        && request.resource.data.keys().hasOnly(['phase', 'updatedAt'])
-        && request.resource.data.phase in ['registration', 'swipe', 'ended'];
+        && request.resource.data.keys().hasOnly(['phase', 'notice', 'noticeAt', 'updatedAt'])
+        && request.resource.data.phase in ['registration', 'swipe', 'ended']
+        && str(request.resource.data.get('notice', ''), 0, 60);
     }
 
     // 운영자 기기 등록: PIN이 맞아야 만들어집니다. 다른 사람은 읽을 수 없습니다.

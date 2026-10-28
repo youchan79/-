@@ -5,7 +5,7 @@
 
   ND.createDemoStore = function () {
     const KEY = 'nd-demo-v1';
-    const fresh = () => ({ phase: 'registration', users: {}, keys: {}, owned: [], swipes: {}, inbox: {}, privates: {}, hidden: {}, admin: false });
+    const fresh = () => ({ phase: 'registration', notice: null, noticeAt: 0, users: {}, keys: {}, owned: [], swipes: {}, inbox: {}, privates: {}, hidden: {}, admin: false });
     let st = fresh();
     try {
       const saved = JSON.parse(localStorage.getItem(KEY));
@@ -23,7 +23,8 @@
     const allProfiles = () => samples.concat(Object.values(st.users))
       .map((p) => Object.assign({}, p, { hidden: !!st.hidden[p.id] }));
     const emitProfiles = () => { const list = allProfiles(); subs.profiles.forEach((cb) => later(() => cb(clone(list)))); };
-    const emitSettings = () => subs.settings.forEach((cb) => later(() => cb({ phase: st.phase })));
+    const settings = () => ({ phase: st.phase, notice: st.notice, noticeAt: st.noticeAt });
+    const emitSettings = () => subs.settings.forEach((cb) => later(() => cb(settings())));
     const emitKeyed = (map, pid, value) => (map.get(pid) || new Set()).forEach((cb) => later(() => cb(clone(value))));
     const watchKeyed = (map, pid, cb, value) => {
       if (!map.has(pid)) map.set(pid, new Set());
@@ -70,7 +71,7 @@
       },
       watchSettings(cb) {
         subs.settings.add(cb);
-        later(() => cb({ phase: st.phase }));
+        later(() => cb(settings()));
         return () => subs.settings.delete(cb);
       },
       watchProfiles(cb) {
@@ -85,13 +86,14 @@
         return watchKeyed(subs.inbox, pid, cb, () => st.inbox[pid] || []);
       },
       watchPrivate(pid, cb) {
-        return watchKeyed(subs.privates, pid, cb, () => st.privates[pid] || { linkedin: '' });
+        return watchKeyed(subs.privates, pid, cb, () => st.privates[pid] || { linkedin: '', met: [] });
       },
-      async savePrivate(pid, linkedin) {
-        st.privates[pid] = { linkedin };
+      async savePrivate(pid, fields) {
+        st.privates[pid] = Object.assign({ linkedin: '', met: [] }, st.privates[pid], fields);
         save();
         emitKeyed(subs.privates, pid, st.privates[pid]);
       },
+      async sendNotice(text) { st.notice = text; st.noticeAt = Date.now(); save(); emitSettings(); },
       async saveSwipe(pid, swipes, change, done) {
         st.swipes[pid] = { likes: swipes.likes.slice(), passes: swipes.passes.slice() };
         if (typeof done === 'boolean' && st.users[pid]) st.users[pid].done = done;

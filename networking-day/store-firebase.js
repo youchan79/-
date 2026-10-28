@@ -28,7 +28,7 @@
 
     await new Promise((resolve) => { const off = authM.onAuthStateChanged(auth, () => { off(); resolve(); }); });
     if (!auth.currentUser) await authM.signInAnonymously(auth);
-    const uid = auth.currentUser.uid;
+    let uid = auth.currentUser.uid;
 
     const { doc, getDoc, setDoc, updateDoc, collection, onSnapshot, writeBatch, serverTimestamp } = fsM;
     // 쓰기 묶음은 한 번에 500건까지라 나눠서 보냅니다.
@@ -82,8 +82,10 @@
         await updateDoc(doc(db, 'profiles', pid), Object.assign({}, data, { updatedAt: serverTimestamp() }));
       },
       watchSettings(cb) {
-        return onSnapshot(doc(db, 'settings', 'event'),
-          (s) => cb(s.exists() ? s.data() : { phase: 'registration' }), report('settings'));
+        return onSnapshot(doc(db, 'settings', 'event'), (s) => {
+          const v = s.exists() ? s.data() : { phase: 'registration' };
+          cb(Object.assign({}, v, { noticeAt: ms(v.noticeAt) }));
+        }, report('settings'));
       },
       watchProfiles(cb) {
         return onSnapshot(collection(db, 'profiles'), (qs) => cb(qs.docs.map((d) => {
@@ -100,13 +102,15 @@
           (qs) => cb(qs.docs.map((d) => ({ id: d.id, at: ms(d.data().at) || Date.now(), ln: d.data().ln || '' }))), report('inbox'));
       },
       watchPrivate(pid, cb) {
-        return onSnapshot(doc(db, 'private', pid), (s) => cb(s.exists() ? s.data() : { linkedin: '' }), report('private'));
+        return onSnapshot(doc(db, 'private', pid), (s) => cb(s.exists() ? s.data() : { linkedin: '', met: [] }), report('private'));
       },
-      // 링크드인 주소를 저장하고, 이미 고른 사람에게 보낸 LIKE에도 새 주소를 반영합니다.
-      async savePrivate(pid, linkedin, likes) {
+      // 내 링크드인·'대화했어요' 목록을 저장합니다. 링크드인이 바뀌면 이미 고른 사람에게 보낸 LIKE에도 반영합니다.
+      async savePrivate(pid, fields, likes) {
         const b = writeBatch(db);
-        b.set(doc(db, 'private', pid), { linkedin, updatedAt: serverTimestamp() });
-        (likes || []).forEach((to) => b.set(doc(db, 'inbox', to, 'likes', pid), { ln: linkedin }, { merge: true }));
+        b.set(doc(db, 'private', pid), Object.assign({}, fields, { updatedAt: serverTimestamp() }), { merge: true });
+        if ('linkedin' in fields) {
+          (likes || []).forEach((to) => b.set(doc(db, 'inbox', to, 'likes', pid), { ln: fields.linkedin }, { merge: true }));
+        }
         await b.commit();
       },
       // change: {add: 고른 사람 pid, ln: 내 링크드인} | {remove: 되돌린 사람 pid} | null, done: true/false/null(그대로)
@@ -125,7 +129,17 @@
         try { await setDoc(doc(db, 'admins', uid), { pin }); return true; } catch (e) { return false; }
       },
       async setPhase(phase) {
-        await setDoc(doc(db, 'settings', 'event'), { phase, updatedAt: serverTimestamp() });
+        await setDoc(doc(db, 'settings', 'event'), { phase, updatedAt: serverTimestamp() }, { merge: true });
+      },
+      // 모든 참가자 화면 위에 잠깐 띄우는 알림
+      async sendNotice(text, phase) {
+        await setDoc(doc(db, 'settings', 'event'), { phase, notice: text, noticeAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
+      },
+      // 공용 기기에서 다음 사람이 쓰도록, 이 기기의 익명 계정을 새로 받습니다.
+      async resetDevice() {
+        await authM.signOut(auth);
+        await authM.signInAnonymously(auth);
+        uid = auth.currentUser.uid;
       },
       async setHidden(pid, hidden) {
         await updateDoc(doc(db, 'profiles', pid), { hidden });

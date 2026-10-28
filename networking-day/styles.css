@@ -22,6 +22,7 @@
 }
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; }
+html { overscroll-behavior: none; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
   font: 16px/1.45 var(--font); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
@@ -31,14 +32,16 @@ body {
 h1, h2, h3, p, ul { margin: 0; }
 ul { padding: 0; list-style: none; }
 button, input, textarea, select { font: inherit; color: inherit; }
-button { cursor: pointer; }
-img { max-width: 100%; }
+button, a, .pill, .seg { cursor: pointer; touch-action: manipulation; }
+img { max-width: 100%; -webkit-touch-callout: none; -webkit-user-drag: none; }
 svg { display: block; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
 .app { height: 100%; max-width: 480px; margin: 0 auto; position: relative; display: flex; flex-direction: column; }
 html.standalone .app { padding-top: env(safe-area-inset-top, 0px); }
+/* 휴대폰 키보드가 올라오면 보이는 영역 높이에 맞춰 '계속' 버튼이 키보드 위에 오도록 */
+html.standalone.kb-open .app { height: var(--vvh, 100%); }
 .app.wide { max-width: 1000px; }
 .view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; color: var(--text-2); }
@@ -56,6 +59,9 @@ html.standalone .app { padding-top: env(safe-area-inset-top, 0px); }
 }
 .cta:active { transform: scale(0.98); }
 .cta:disabled { background: var(--surface-2); color: var(--text-3); transform: none; cursor: default; }
+.cta.dim { opacity: 0.45; }
+.cta.shake { animation: shake 0.35s ease; }
+@keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 .cta.small { width: auto; height: 44px; padding: 0 22px; font-size: 15px; }
 .ghost-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -137,7 +143,14 @@ html.standalone .app { padding-top: env(safe-area-inset-top, 0px); }
 .slot-badge.remove { background: #fff; color: #333; }
 .slot-badge svg { width: 20px; height: 20px; }
 .ob-foot { padding: 10px 0 calc(14px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; }
-.ob-foot-note { text-align: center; font-size: 13px; color: var(--text-3); }
+html.kb-open .ob-foot { padding-bottom: 10px; }
+.ob-foot-note { text-align: center; font-size: 13px; color: var(--text-3); line-height: 1.6; }
+.ob-msg { color: var(--like); font-size: 14.5px; font-weight: 700; text-align: center; }
+.ob-label.first { margin-top: 0; }
+.company-logo { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding: 12px; border-radius: 16px; background: var(--surface); font-size: 14px; color: var(--text-2); line-height: 1.45; }
+.company-logo b { color: var(--ok); }
+.company-logo-tile { width: 52px; height: 52px; border-radius: 12px; overflow: hidden; flex: none; }
+.company-logo-tile .logo { width: 100%; height: 100%; }
 
 .ob.is-welcome { background: linear-gradient(160deg, var(--brand-a) 0%, #ff4b5c 55%, var(--brand-b) 100%); }
 .ob.is-welcome .ob-top { visibility: hidden; }
@@ -179,35 +192,54 @@ html.standalone .app { padding-top: env(safe-area-inset-top, 0px); }
 .round.like { color: var(--like); }
 .round.undo { color: var(--gold); }
 
-/* ---------- 프로필 카드 ---------- */
+/* ---------- 프로필 카드 (틴더처럼 페이지마다 주제 하나) ---------- */
 .card {
   position: absolute; inset: 0; border-radius: 14px; overflow: hidden; background: #202024; color: #fff;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45); touch-action: pan-y; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none; container-type: size;
   transition: transform 0.3s cubic-bezier(.2,.7,.3,1), opacity 0.3s ease;
 }
-.card.back { transform: scale(0.96); opacity: 0.6; pointer-events: none; }
+.card.back { transform: scale(0.95); opacity: 0.85; pointer-events: none; transition: transform 0.2s ease; }
 .card.dragging { transition: none; }
-.v-bg { position: absolute; inset: -15%; width: 130%; height: 130%; object-fit: cover; filter: blur(34px) saturate(1.6); opacity: 0.95; }
-.v-bg.mono { background: var(--mono, #3b4656); filter: none; }
+.card.nudge-l { animation: nudge-l 0.28s ease; }
+.card.nudge-r { animation: nudge-r 0.28s ease; }
+@keyframes nudge-l { 40% { transform: perspective(900px) rotateY(-5deg); } }
+@keyframes nudge-r { 40% { transform: perspective(900px) rotateY(5deg); } }
+/* 배경: 로고에서 뽑은 색으로 만든 그라데이션 (블러 필터보다 가벼움) */
+.v-bg { position: absolute; inset: 0; background: #26262b; }
 .v-shade {
   position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0.55) 58%, rgba(0,0,0,0.92) 100%);
-  transition: background 0.25s ease;
+  background: linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0) 38%, rgba(0,0,0,0.6) 62%, rgba(0,0,0,0.93) 100%);
 }
 .v-logo {
-  position: absolute; left: 50%; top: 32%; width: 46%; max-width: 210px; aspect-ratio: 1; transform: translate(-50%, -50%);
+  position: absolute; left: 50%; top: 30%; width: 46%; max-width: 210px; aspect-ratio: 1; transform: translate(-50%, -50%);
   border-radius: 28px; overflow: hidden; background: #fff; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
-  transition: transform 0.3s ease, top 0.3s ease;
 }
+@container (min-height: 1px) {
+  .card .v-logo { width: min(46cqw, 30cqh); top: 26cqh; border-radius: min(28px, 7cqh); }
+}
+.v-logo.dark, .v-logo.dark .logo { background: #1c1c1f; }
 .v-logo .logo { width: 100%; height: 100%; border-radius: 0; }
-.card.deep .v-shade { background: linear-gradient(180deg, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.75) 34%, rgba(0,0,0,0.95) 70%); }
-.card.deep .v-logo { top: 17%; transform: translate(-50%, -50%) scale(0.55); }
 .bars { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; gap: 4px; z-index: 3; }
 .bars i { flex: 1; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.35); }
 .bars i.on { background: #fff; }
-.ci { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; padding: 0 70px 20px 18px; display: flex; flex-direction: column; gap: 8px; }
-.ci-name { font-size: 31px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; }
-.ci-years { font-size: 22px; font-weight: 400; margin-left: 10px; letter-spacing: 0; }
+.ci { position: absolute; left: 0; right: 0; bottom: 0; z-index: 2; padding: 0 64px 20px 18px; display: flex; flex-direction: column; gap: 8px; max-height: 62%; overflow: hidden; }
+@container (min-height: 1px) { .card .ci { max-height: 60cqh; } }
+.ci-name { font-size: 31px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; }
+.ci-years { font-size: 22px; font-weight: 400; letter-spacing: 0; white-space: nowrap; }
+.ci-badge {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92); color: #15151a; font-size: 13.5px; font-weight: 800;
+}
+.ci-badge.shared { background: linear-gradient(90deg, var(--brand-a), var(--brand-b)); color: #fff; }
+.ci-badge svg { width: 15px; height: 15px; }
+.ci-head { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 800; margin-top: 2px; }
+.ci-head svg { width: 19px; height: 19px; }
+.ci-bio { font-size: 16px; font-weight: 600; line-height: 1.45; }
+.ci-bio-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ci-more { background: none; border: 0; padding: 2px 0; color: #fff; font-size: 15px; font-weight: 800; display: inline-flex; align-items: center; gap: 2px; align-self: flex-start; }
+.ci-more::after { content: "›"; font-size: 20px; line-height: 1; margin-left: 4px; }
+.ci-list .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .ci-line { display: flex; align-items: flex-start; gap: 8px; font-size: 16px; line-height: 1.4; }
 .ci-line svg { width: 19px; height: 19px; flex: none; margin-top: 1px; opacity: 0.95; }
 .ci-k { font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, 0.7); margin-top: 6px; }
@@ -230,6 +262,14 @@ html.standalone .app { padding-top: env(safe-area-inset-top, 0px); }
 }
 .stamp.like { left: 22px; color: var(--like-stamp); border-color: var(--like-stamp); transform: rotate(-18deg); }
 .stamp.nope { right: 22px; color: var(--like); border-color: var(--like); transform: rotate(18deg); }
+
+/* 처음 한 번 보여 주는 사용 안내 */
+.coach { position: absolute; inset: 0; z-index: 6; border-radius: 14px; background: rgba(8, 8, 10, 0.9); color: #fff; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr auto; text-align: center; }
+.coach-zone { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 12px; font-size: 15px; font-weight: 700; }
+.coach-zone + .coach-zone { border-left: 2px dashed rgba(255, 255, 255, 0.35); }
+.coach-zone b { font-size: 28px; }
+.coach-foot { grid-column: 1 / -1; padding: 16px 18px 22px; display: flex; flex-direction: column; gap: 12px; font-size: 15px; font-weight: 700; }
+.coach-foot .cta { height: 48px; }
 
 /* ---------- 레이더(대기·완료) ---------- */
 .radar-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; padding-bottom: 30px; }
@@ -373,7 +413,7 @@ html.standalone .tabbar { padding-bottom: calc(6px + env(safe-area-inset-bottom,
 .phase-seg button[aria-checked="true"] { background: linear-gradient(90deg, var(--brand-a), var(--brand-b)); color: #fff; }
 .confirm { background: #2a1a20; border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 12px; font-size: 15px; }
 .confirm .row { display: flex; gap: 8px; align-items: center; }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .stat { background: var(--surface-2); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
 .stat b { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .stat b small { font-size: 15px; color: var(--text-3); font-weight: 600; }
@@ -411,3 +451,31 @@ td .ghost-btn { min-height: 36px; padding: 0 14px; font-size: 13.5px; }
 .tag-test { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; margin-left: 6px; border-radius: 5px; background: var(--surface-2); color: var(--text-2); font-size: 11.5px; font-weight: 700; }
 .logo-auto { margin-top: 14px; color: var(--ok); font-size: 14.5px; font-weight: 700; }
 .li-ln { margin-top: 12px; }
+
+/* ---------- 추가: 연결 상태·전체 알림 ---------- */
+.net-banner, .notice-banner {
+  position: absolute; left: var(--gutter-l); right: var(--gutter-r); top: 8px; z-index: 35;
+  padding: 11px 14px; border-radius: 14px; font-size: 14px; font-weight: 700; line-height: 1.45; text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.net-banner { background: #3a2a10; color: #ffd98a; }
+.notice-banner { background: linear-gradient(90deg, var(--brand-a), var(--brand-b)); color: #fff; top: 56px; }
+
+/* ---------- 추가: LIKE 목록 동작 버튼 ---------- */
+.li-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.li-actions .ln-btn, .chip-btn { height: 40px; }
+.chip-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: 999px; border: 1.5px solid #46464b;
+  background: transparent; color: var(--text); font-size: 14.5px; font-weight: 700; white-space: nowrap;
+}
+.chip-btn svg { width: 17px; height: 17px; }
+.chip-btn.on { border-color: var(--ok); color: var(--ok); }
+.chip-btn.warn { color: var(--text-2); }
+.chip-btn.warn.armed { border-color: var(--like); color: var(--like); }
+.li.met .li-name { color: var(--text-3); }
+.li.met .li-card, .li.met .li-quote { opacity: 0.55; }
+.met-count { color: var(--text-2); font-size: 14px; font-weight: 700; margin: -8px 0 16px; }
+.me-out { align-self: center; margin-top: 10px; color: var(--text-3); text-decoration: underline; text-underline-offset: 3px; }
+.text-btn.inline { padding: 0 4px; color: var(--like); text-decoration: underline; }
+.match .finish-title { background: linear-gradient(90deg, #7cf0b8, #3ecf8e, #2bb3a3); -webkit-background-clip: text; background-clip: text; }
+.match-logos .fl { width: 92px; height: 92px; margin-left: -18px; }
