@@ -109,6 +109,18 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // 진행 현황(고른 수, 본 카드 수, 남은 카드 수): 본인만 쓰고 운영자만 읽습니다. 누구를 골랐는지는 들어 있지 않습니다.
+    match /progress/{pid} {
+      allow read: if isAdmin();
+      allow create, update: if ownsAfter(pid)
+        && request.resource.data.keys().hasOnly(['likes', 'seen', 'left', 'updatedAt'])
+        && request.resource.data.likes is int && request.resource.data.likes >= 0 && request.resource.data.likes <= 5
+        && request.resource.data.seen is int && request.resource.data.seen >= 0 && request.resource.data.seen <= 200
+        && (!('left' in request.resource.data)
+            || (request.resource.data.left is int && request.resource.data.left >= 0 && request.resource.data.left <= 200));
+      allow delete: if isAdmin();
+    }
+
     // 나를 고른 사람: 받은 사람과 보낸 사람만 읽습니다. 운영자도 읽을 수 없습니다.
     // 보낸 사람의 고른 목록(swipes)에 실제로 있어야만 만들 수 있어서 5명 제한을 우회할 수 없습니다.
     // ln: 보낸 사람의 링크드인 주소(선택). 화면에는 서로 고른 경우에만 보입니다.

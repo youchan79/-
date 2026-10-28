@@ -16,13 +16,20 @@
     const base = Date.parse('2026-11-16T11:10:00+09:00');
     const samples = ND.SAMPLE_PROFILES.map((p, i) => Object.assign({}, p, { done: i % 3 === 0, createdAt: base + i * 53000 }));
 
-    const subs = { settings: new Set(), profiles: new Set(), swipes: new Map(), inbox: new Map(), privates: new Map() };
+    const subs = { settings: new Set(), profiles: new Set(), progress: new Set(), swipes: new Map(), inbox: new Map(), privates: new Map() };
     const later = (fn) => setTimeout(fn, 0);
     const clone = (v) => JSON.parse(JSON.stringify(v));
 
     const allProfiles = () => samples.concat(Object.values(st.users))
       .map((p) => Object.assign({}, p, { hidden: !!st.hidden[p.id] }));
-    const emitProfiles = () => { const list = allProfiles(); subs.profiles.forEach((cb) => later(() => cb(clone(list)))); };
+    const emitProfiles = () => { const list = allProfiles(); subs.profiles.forEach((cb) => later(() => cb(clone(list), { fromCache: false }))); emitProgress(); };
+    // 운영자 화면 진행 현황: 예시 참가자는 그럴듯한 값으로, 직접 등록한 사람은 실제 기록으로
+    const progressList = () => samples.map((p, i) => ({ id: p.id, likes: p.done ? 5 : i % 4, seen: p.done ? 14 : (i % 4) * 3, left: p.done ? 19 : 10 }))
+      .concat(Object.keys(st.users).map((pid) => {
+        const sw = st.swipes[pid] || { likes: [], passes: [] };
+        return { id: pid, likes: sw.likes.length, seen: sw.likes.length + sw.passes.length, left: (st.progress || {})[pid] };
+      }));
+    function emitProgress() { const list = progressList(); subs.progress.forEach((cb) => later(() => cb(clone(list)))); }
     const settings = () => ({ phase: st.phase, notice: st.notice, noticeAt: st.noticeAt });
     const emitSettings = () => subs.settings.forEach((cb) => later(() => cb(settings())));
     const emitKeyed = (map, pid, value) => (map.get(pid) || new Set()).forEach((cb) => later(() => cb(clone(value))));
@@ -76,8 +83,13 @@
       },
       watchProfiles(cb) {
         subs.profiles.add(cb);
-        later(() => cb(clone(allProfiles())));
+        later(() => cb(clone(allProfiles()), { fromCache: false }));
         return () => subs.profiles.delete(cb);
+      },
+      watchProgress(cb) {
+        subs.progress.add(cb);
+        later(() => cb(clone(progressList())));
+        return () => subs.progress.delete(cb);
       },
       watchSwipes(pid, cb) {
         return watchKeyed(subs.swipes, pid, cb, () => st.swipes[pid] || { likes: [], passes: [] });
@@ -93,13 +105,21 @@
         save();
         emitKeyed(subs.privates, pid, st.privates[pid]);
       },
-      async sendNotice(text) { st.notice = text; st.noticeAt = Date.now(); save(); emitSettings(); },
-      async saveSwipe(pid, swipes, change, done) {
+      async sendNotice(text, phase) {
+        st.notice = text;
+        st.noticeAt = Date.now();
+        if (phase) st.phase = phase;
+        save();
+        emitSettings();
+      },
+      async saveSwipe(pid, swipes, change, done, progress) {
         st.swipes[pid] = { likes: swipes.likes.slice(), passes: swipes.passes.slice() };
+        st.progress = st.progress || {};
+        if (progress && Number.isInteger(progress.left)) st.progress[pid] = progress.left;
         if (typeof done === 'boolean' && st.users[pid]) st.users[pid].done = done;
         save();
         emitKeyed(subs.swipes, pid, st.swipes[pid]);
-        if (typeof done === 'boolean') emitProfiles();
+        if (typeof done === 'boolean') emitProfiles(); else emitProgress();
       },
       async isAdmin() { return !!st.admin; },
       async becomeAdmin(pin) {
@@ -115,6 +135,7 @@
         emitProfiles();
       },
       async addTestProfiles() { /* 시연 모드에는 이미 예시 참가자가 들어 있습니다 */ },
+      async removeTestProfiles() { /* 시연 모드에는 테스트 참가자가 따로 없습니다 */ },
       async resetAll() { this.reset(); emitProfiles(); emitSettings(); },
       reset() { try { localStorage.removeItem(KEY); } catch (e) { /* 무시 */ } st = fresh(); },
     };

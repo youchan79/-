@@ -12,8 +12,6 @@
 <!-- APP:START -->
 <div class="app" id="app">
   <button type="button" class="demo-chip" id="demo-chip" hidden>DEMO</button>
-  <div class="net-banner" id="net-banner" role="status" aria-live="polite" hidden></div>
-  <div class="notice-banner" id="notice-banner" role="status" aria-live="assertive" hidden></div>
 
   <section class="view" id="view-loading">
     <div class="center"><span class="spinner" aria-label="불러오는 중"></span></div>
@@ -26,8 +24,11 @@
   <!-- 가입·프로필 입력 (한 화면에 질문 하나) -->
   <section class="view ob" id="view-onboard" hidden>
     <div class="ob-top">
-      <div class="ob-progress"><i id="ob-bar"></i></div>
-      <div class="ob-nav"><button type="button" class="icon-btn" id="ob-back" aria-label="뒤로"></button></div>
+      <div class="ob-progress" id="ob-progress"><i id="ob-bar"></i></div>
+      <div class="ob-nav">
+        <button type="button" class="icon-btn" id="ob-back" aria-label="뒤로"></button>
+        <span class="ob-mode" id="ob-mode" hidden>프로필 수정 중</span>
+      </div>
     </div>
     <div class="ob-body" id="ob-body">
       <div class="ob-step welcome" data-step="welcome">
@@ -60,6 +61,13 @@
         </ul>
       </div>
 
+      <!-- 프로필 수정: 고칠 항목 고르기 -->
+      <div class="ob-step" data-step="editmenu" hidden>
+        <h2>무엇을 고칠까요?</h2>
+        <p class="ob-help">항목을 눌러 고치고 저장하면 바로 반영돼요.</p>
+        <ul class="edit-list" id="edit-list"></ul>
+      </div>
+
       <div class="ob-step" data-step="company" hidden>
         <h2>어디에서 일하세요?</h2>
         <input id="in-company" class="line-input" type="text" maxlength="30" aria-label="회사·기관명" list="company-list" autocomplete="organization" enterkeyhint="next">
@@ -74,7 +82,7 @@
 
       <div class="ob-step" data-step="logo" hidden>
         <h2>회사 로고를 추가하세요</h2>
-        <p class="ob-help">얼굴 사진 대신 카드에 들어가요. 없으면 회사 이름 첫 글자로 만들어 드려요.</p>
+        <p class="ob-help">얼굴 사진 대신 카드에 들어가요. 여백은 자동으로 잘라 내요. 없으면 회사 이름 첫 글자로 만들어 드려요.</p>
         <div class="logo-slot-wrap">
           <label class="logo-slot" for="in-logo" id="logo-slot"></label>
           <button type="button" class="slot-badge" id="logo-badge" aria-label="로고 추가"></button>
@@ -85,15 +93,15 @@
       <div class="ob-step" data-step="job" hidden>
         <h2>어떤 일을 하세요?</h2>
         <input id="in-title" class="line-input" type="text" maxlength="30" enterkeyhint="done" aria-label="직함·직무">
-        <p class="ob-label">직무 분야</p>
-        <div class="pills" id="in-field" role="radiogroup" aria-label="직무 분야"></div>
-        <p class="ob-label">경력</p>
-        <div class="pills" id="in-years" role="radiogroup" aria-label="경력 연차"></div>
+        <p class="ob-label" id="lbl-field">직무 분야</p>
+        <div class="pills" id="in-field" role="radiogroup" aria-labelledby="lbl-field"></div>
+        <p class="ob-label" id="lbl-years">경력</p>
+        <div class="pills" id="in-years" role="radiogroup" aria-labelledby="lbl-years"></div>
       </div>
 
       <div class="ob-step" data-step="exp" hidden>
         <h2>경험을 알려주세요</h2>
-        <p class="ob-label first">대표 경험·프로젝트 <span>1개 이상, 최대 3개</span></p>
+        <p class="ob-label first" id="lbl-exps">대표 경험·프로젝트 <span>1개 이상, 최대 3개</span></p>
         <div class="stack" id="in-exps"></div>
         <p class="ob-label">이전 경력 <span>선택, 최대 3개</span></p>
         <div class="stack" id="in-careers"></div>
@@ -109,13 +117,13 @@
 
       <div class="ob-step" data-step="tags" hidden>
         <h2>관심 키워드</h2>
-        <p class="ob-help">최대 5개. 같은 키워드를 고른 사람 카드에 표시돼요.</p>
+        <p class="ob-help">같은 키워드를 고른 사람 카드에 표시돼요. <b class="pick-n" id="kw-count">0/5</b></p>
         <div class="pills" id="in-keywords"></div>
         <div class="add-row">
           <input id="kw-custom" class="box-input" type="text" maxlength="15" enterkeyhint="done" placeholder="직접 입력" aria-label="키워드 직접 입력">
           <button type="button" class="ghost-btn" id="kw-add">추가</button>
         </div>
-        <p class="ob-label">찾고 있어요 <span>최대 3개</span></p>
+        <p class="ob-label">찾고 있어요 <span>선택 <b class="pick-n" id="look-count">0/3</b></span></p>
         <div class="pills" id="in-looking"></div>
       </div>
 
@@ -138,6 +146,7 @@
       <header class="topbar">
         <span class="top-pill">오늘의 5명</span>
         <span class="top-count" id="pick-count"></span>
+        <button type="button" class="text-btn top-stop" id="top-stop" hidden>그만 보기</button>
       </header>
       <div class="deck-area" id="deck-area">
         <div class="deck" id="deck"></div>
@@ -169,6 +178,7 @@
 
     <div class="tab tab-scroll" id="tab-me" hidden>
       <header class="page-head"><h1>프로필</h1></header>
+      <p class="me-alert" id="me-hidden" hidden>운영진이 내 프로필을 숨겼어요. 다른 참가자에게 보이지 않아요. 잘못된 것 같으면 운영진에게 알려 주세요.</p>
       <div class="me-card" id="me-card"></div>
       <button type="button" class="outline-btn" id="me-edit">프로필 수정</button>
       <p class="me-note" id="me-linkedin"></p>
@@ -187,11 +197,11 @@
   <!-- 운영자 -->
   <section class="view admin" id="view-admin" hidden>
     <div class="admin-scroll">
-      <header class="page-head"><h1>운영자</h1><a class="text-link" href="#">참가자 화면</a></header>
+      <header class="page-head"><h1>운영자</h1><a class="ghost-btn head-link" href="#">참가자 화면</a></header>
       <form id="admin-login" class="admin-login" novalidate>
         <p class="ob-help">진행 단계를 바꾸면 모든 참가자 화면이 바로 바뀌어요.</p>
         <input id="admin-pin" class="box-input" type="password" autocomplete="off" placeholder="운영자 PIN" aria-label="운영자 PIN">
-        <p class="ob-error" id="admin-error" hidden>PIN이 맞지 않아요.</p>
+        <p class="ob-error" id="admin-error" hidden></p>
         <button class="cta" type="submit">들어가기</button>
       </form>
       <div id="admin-panel" class="admin-grid" hidden>
@@ -199,34 +209,34 @@
           <h3>진행 단계</h3>
           <div class="phase-seg" id="phase-seg" role="radiogroup" aria-label="진행 단계">
             <button type="button" role="radio" data-phase="registration">프로필 등록</button>
-            <button type="button" role="radio" data-phase="swipe">스와이프</button>
-            <button type="button" role="radio" data-phase="ended">종료</button>
+            <button type="button" role="radio" data-phase="swipe">카드 고르기</button>
+            <button type="button" role="radio" data-phase="ended">결과 공개</button>
           </div>
           <div class="confirm" id="phase-confirm" hidden>
             <p id="phase-confirm-text"></p>
+            <label class="check" id="phase-notice-row" hidden><input type="checkbox" id="phase-notice" checked> ‘네트워킹 시작’ 알림도 함께 보내기</label>
             <div class="row">
               <button type="button" class="cta small" id="phase-yes">바꾸기</button>
               <button type="button" class="ghost-btn" id="phase-no">취소</button>
             </div>
           </div>
-          <div class="stats">
-            <div class="stat"><b id="st-reg">0</b><span>등록</span></div>
-            <div class="stat"><b id="st-doing">0</b><span>고르는 중</span></div>
-            <div class="stat"><b id="st-done">0</b><span>고르기 완료</span></div>
-            <div class="stat"><b id="st-hidden">0</b><span>숨김</span></div>
-          </div>
+          <div class="stats" id="stats"></div>
         </div>
         <div class="panel">
           <h3>전체 알림</h3>
-          <p class="ob-help">모든 참가자 화면 위에 10초 동안 띄워요.</p>
+          <p class="ob-help">모든 참가자 화면 맨 위에 20초 동안 띄워요. 참가자가 눌러서 닫을 수 있어요.</p>
           <div class="row-btns" id="notice-presets">
             <button type="button" class="ghost-btn" data-notice="2분 뒤에 카드 고르기가 끝나요">2분 남음</button>
             <button type="button" class="ghost-btn" data-notice="1분 뒤에 카드 고르기가 끝나요">1분 남음</button>
-            <button type="button" class="ghost-btn" data-notice="지금부터 네트워킹을 시작해요. LIKE에서 상대를 확인하세요">네트워킹 시작</button>
           </div>
-          <div class="add-row">
-            <input id="notice-text" class="box-input" type="text" maxlength="60" placeholder="직접 입력" aria-label="알림 문구">
-            <button type="button" class="ghost-btn" id="notice-send">보내기</button>
+          <p class="ob-help" id="notice-preset-note" hidden>‘2분 남음’, ‘1분 남음’은 카드 고르기 단계에서만 보낼 수 있어요.</p>
+          <form class="add-row" id="notice-form" novalidate>
+            <input id="notice-text" class="box-input" type="text" maxlength="60" placeholder="직접 입력" aria-label="알림 문구" enterkeyhint="send">
+            <button type="submit" class="ghost-btn" id="notice-send">보내기</button>
+          </form>
+          <div class="notice-last" id="notice-last" hidden>
+            <p id="notice-last-text"></p>
+            <button type="button" class="ghost-btn" id="notice-clear" hidden>알림 내리기</button>
           </div>
         </div>
         <div class="panel">
@@ -245,24 +255,31 @@
           <p class="ob-help">리허설 때는 예시 참가자를 넣고 카드를 넘겨 보세요. 실제 행사 전에는 전체 초기화로 테스트 기록을 모두 지웁니다.</p>
           <div class="row-btns">
             <button type="button" class="ghost-btn" id="test-add">예시 참가자 34명 넣기</button>
+            <button type="button" class="ghost-btn" id="test-remove" hidden>테스트 참가자만 지우기</button>
             <button type="button" class="ghost-btn danger" id="test-reset">전체 초기화</button>
           </div>
-          <div class="confirm" id="reset-confirm" hidden>
-            <p>등록된 프로필 <b id="reset-n">0</b>개와 고른 기록, LIKE, 링크드인이 모두 지워지고 진행 단계가 '프로필 등록'으로 돌아가요. 되돌릴 수 없어요.</p>
+          <p class="ob-help" id="test-add-note" hidden></p>
+          <div class="confirm" id="test-confirm" hidden>
+            <p id="test-confirm-text"></p>
+            <label class="type-confirm" id="test-type-row" hidden>
+              <span>확인을 위해 <b>초기화</b>라고 입력하세요</span>
+              <input id="test-type" class="box-input" type="text" autocomplete="off" aria-label="초기화라고 입력">
+            </label>
             <div class="row">
-              <button type="button" class="cta small" id="reset-yes">모두 지우기</button>
-              <button type="button" class="ghost-btn" id="reset-no">취소</button>
+              <button type="button" class="ghost-btn" id="test-no">취소</button>
+              <button type="button" class="cta small danger" id="test-yes">확인</button>
             </div>
           </div>
         </div>
         <div class="panel wide">
-          <h3>참가자</h3>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>이름</th><th>회사</th><th>직함</th><th>상태</th><th></th></tr></thead>
-              <tbody id="admin-rows"></tbody>
-            </table>
+          <div class="panel-head">
+            <h3>참가자</h3>
+            <div class="mini-seg" id="admin-filter">
+              <button type="button" data-filter="real">실제 참가자</button>
+              <button type="button" data-filter="all">전체</button>
+            </div>
           </div>
+          <div class="prows" id="admin-rows"></div>
           <p class="ob-help">숨긴 프로필은 다른 참가자 카드와 LIKE 목록에 나타나지 않아요. 테스트·중복 프로필 정리용이에요.</p>
         </div>
       </div>
@@ -280,8 +297,10 @@
   <div class="finish-inner">
     <p class="finish-title" id="finish-title"></p>
     <div class="finish-logos" id="finish-logos"></div>
-    <p class="finish-text" id="finish-text"></p>
+    <p class="finish-text" id="finish-text" aria-live="polite"></p>
+    <p class="finish-pending" id="finish-pending" hidden>아직 서버에 저장 중이에요. 이 기기에 보관해 두었다가 인터넷이 연결되면 자동으로 저장돼요.</p>
     <button type="button" class="cta" id="finish-go">누가 나를 골랐는지 보기</button>
+    <button type="button" class="text-btn" id="finish-undo" hidden>방금 선택 되돌리기</button>
     <button type="button" class="text-btn" id="finish-close">닫기</button>
   </div>
 </div>
@@ -304,8 +323,8 @@
     <p>가상 참가자 34명으로 동작하고, 이 기기에만 저장돼요.</p>
     <div class="phase-seg" id="demo-phase">
       <button type="button" data-phase="registration">등록</button>
-      <button type="button" data-phase="swipe">스와이프</button>
-      <button type="button" data-phase="ended">종료</button>
+      <button type="button" data-phase="swipe">카드 고르기</button>
+      <button type="button" data-phase="ended">결과 공개</button>
     </div>
     <a class="ghost-btn" href="#admin" id="demo-admin">운영자 화면 (PIN 0000)</a>
     <button type="button" class="ghost-btn" id="demo-reset">처음부터 다시</button>
@@ -318,6 +337,15 @@
   <div class="qr" id="qr-large"></div>
   <p class="url" id="qr-large-url"></p>
   <button type="button" class="ghost-btn" id="qr-close">닫기</button>
+</div>
+
+<!-- 연결 상태·전체 알림: 모든 화면(완료·프로필 보기 포함) 맨 위 -->
+<div class="banners" id="banners">
+  <div class="net-banner" id="net-banner" role="status" aria-live="polite" hidden></div>
+  <div class="notice-banner" id="notice-banner" role="status" aria-live="assertive" hidden>
+    <span id="notice-msg"></span>
+    <button type="button" class="notice-x" id="notice-x">닫기</button>
+  </div>
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
