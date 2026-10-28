@@ -1,4 +1,4 @@
-// 오늘의 5명 — 화면과 흐름
+// 오늘의 5명 — 화면과 흐름 (틴더식 카드 UI)
 (function () {
   'use strict';
 
@@ -18,9 +18,10 @@
   const MAX_LOOKING = 3;
   const MAX_CAREERS = 3;
   const MONO_COLORS = ['#1f4e79', '#9a3b2e', '#2e6b4f', '#5b4790', '#8a5a12', '#0f6b66', '#8c2d5a', '#3b4656'];
+  const PAGES = 3; // 카드 한 장의 페이지 수 (기본 정보 / 경험·경력 / 대화 주제·키워드)
 
   const $ = (id) => document.getElementById(id);
-  const VIEWS = ['loading', 'error', 'entry', 'profile', 'wait', 'swipe', 'result', 'admin'];
+  const VIEWS = ['loading', 'error', 'onboard', 'app', 'admin'];
 
   const S = {
     store: null,
@@ -34,14 +35,39 @@
     deckOrder: [],
     renderedTop: null,
     last: null,
-    pending: null,     // 새 프로필 입력 중: {name, hash, pid}
     creating: false,
     editing: false,
-    continuing: false, // 결과를 본 뒤 새 카드 이어서 고르기
+    continuing: false, // 다 고른 뒤 새로 등록한 사람 카드 이어서 보기
     admin: false,
     view: null,
+    tab: 'swipe',
+    likesTab: 'in',
     unsub: [],
   };
+
+  // ---------- 아이콘 ----------
+  const ICONS = {
+    x: '<path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" fill="none"/>',
+    heart: '<path d="M12 21s-7.6-4.7-9.7-9.5C.8 8 2.9 4.3 6.7 4.3c2.2 0 3.6 1.2 4.4 2.5.8-1.3 2.2-2.5 4.4-2.5 3.8 0 5.9 3.7 4.4 7.2C19.6 16.3 12 21 12 21z" fill="currentColor"/>',
+    heartLine: '<path d="M12 20s-7-4.4-8.9-8.8C1.7 8 3.6 4.8 7 4.8c2 0 3.3 1.1 5 3 1.7-1.9 3-3 5-3 3.4 0 5.3 3.2 3.9 6.4C19 15.6 12 20 12 20z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>',
+    undo: '<path d="M4 5v5h5" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.6 14.5A7.7 7.7 0 1 0 6.4 7L4 10" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round"/>',
+    up: '<path d="M12 19V6M6 11.5L12 5.5l6 6" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    down: '<path d="M12 5v13M6 12.5l6 6 6-6" stroke="currentColor" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    back: '<path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    briefcase: '<rect x="3" y="7" width="18" height="13" rx="2.5" stroke="currentColor" stroke-width="2" fill="none"/><path d="M8.5 7V5.5A1.5 1.5 0 0 1 10 4h4a1.5 1.5 0 0 1 1.5 1.5V7M3 12.5h18" stroke="currentColor" stroke-width="2" fill="none"/>',
+    building: '<path d="M5 21V4.5A1.5 1.5 0 0 1 6.5 3h7A1.5 1.5 0 0 1 15 4.5V21M15 9h3.5A1.5 1.5 0 0 1 20 10.5V21M3 21h18M8.5 7.5h3M8.5 11.5h3M8.5 15.5h3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
+    cards: '<rect x="8" y="3.5" width="12" height="16" rx="2.5" stroke="currentColor" stroke-width="2" fill="none" transform="rotate(10 14 11.5)"/><rect x="4" y="4.5" width="12" height="16" rx="2.5" fill="currentColor"/>',
+    person: '<circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2" fill="none"/><path d="M4 21c.6-4 3.9-6.5 8-6.5s7.4 2.5 8 6.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
+    quote: '<path d="M10 7H6.5A2.5 2.5 0 0 0 4 9.5V13h5v5H4M20 7h-3.5A2.5 2.5 0 0 0 14 9.5V13h5v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>',
+    lock: '<rect x="5" y="10.5" width="14" height="10" rx="2.5" fill="currentColor"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" stroke-width="2.2" fill="none"/>',
+    plus: '<path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>',
+  };
+  function icon(name) {
+    const span = document.createElement('span');
+    span.style.display = 'contents';
+    span.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + ICONS[name] + '</svg>';
+    return span;
+  }
 
   // ---------- 유틸 ----------
   function h(tag, props, ...kids) {
@@ -87,12 +113,12 @@
     t.textContent = msg;
     t.hidden = false;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { t.hidden = true; }, 2800);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
   }
   ND.onStoreError = (err) => {
     const code = err && err.code ? String(err.code) : '';
     if (code.includes('permission')) toast('권한이 없어 불러오지 못했어요. 운영진에게 알려 주세요.');
-    else toast('연결이 불안정해요. 잠시 뒤 자동으로 다시 시도합니다.');
+    else toast('연결이 불안정해요. 잠시 뒤 다시 시도합니다.');
   };
 
   let queue = Promise.resolve();
@@ -105,107 +131,149 @@
   }
 
   // ---------- 로고·카드 ----------
-  function logoEl(p, size) {
-    const box = h('div', { class: 'logo' + (size ? ' ' + size : '') });
+  const monoColor = (company) => MONO_COLORS[hash32(company || '') % MONO_COLORS.length];
+
+  function logoEl(p) {
+    const box = h('div', { class: 'logo' });
     const label = (p.company || '회사') + ' 로고';
     if (p.logo) {
-      box.append(h('img', { src: p.logo, alt: label }));
+      box.append(h('img', { src: p.logo, alt: label, draggable: 'false' }));
     } else {
-      const ch = (p.company || '?').trim().charAt(0).toUpperCase() || '?';
       box.classList.add('mono-logo');
-      box.style.setProperty('--mono', MONO_COLORS[hash32(p.company || '') % MONO_COLORS.length]);
+      box.style.setProperty('--mono', monoColor(p.company));
       box.setAttribute('role', 'img');
       box.setAttribute('aria-label', label);
-      box.append(h('span', { 'aria-hidden': 'true', text: ch }));
+      box.append(h('span', { 'aria-hidden': 'true', text: (p.company || '?').trim().charAt(0).toUpperCase() || '?' }));
     }
     return box;
   }
 
-  function section(label, body) {
-    return h('div', { class: 'pcard-sec' }, h('p', { class: 'k' }, label), body);
+  // 사진 자리: 로고를 크게 흐려 깐 배경 + 가운데 로고
+  function visualEls(p) {
+    let bg;
+    if (p.logo) {
+      bg = h('img', { class: 'v-bg', src: p.logo, alt: '', 'aria-hidden': 'true', draggable: 'false' });
+    } else {
+      bg = h('div', { class: 'v-bg mono', 'aria-hidden': 'true' });
+      bg.style.setProperty('--mono', monoColor(p.company));
+    }
+    return [bg, h('div', { class: 'v-shade' }), h('div', { class: 'v-logo' }, logoEl(p))];
   }
 
-  function cardEl(p) {
-    const myKw = (S.me && S.me.keywords) || [];
-    const shared = p.id === S.pid ? [] : (p.keywords || []).filter((k) => myKw.includes(k));
-    const careers = (p.careers || []).filter((c) => c && (c.org || c.role));
-    return h('article', { class: 'pcard', 'data-id': p.id },
-      h('header', { class: 'pcard-head' },
-        logoEl(p, ''),
-        h('div', { class: 'pcard-org' },
-          h('p', { class: 'pcard-company', text: p.company }),
-          p.companyIntro ? h('p', { class: 'pcard-intro', text: p.companyIntro }) : null)),
-      h('div', { class: 'pcard-body' },
-        h('div', { class: 'pcard-who' },
-          h('h3', { class: 'pcard-name', text: p.name }),
-          h('p', { class: 'pcard-title', text: p.title }),
-          h('p', { class: 'pcard-meta' },
-            h('span', { class: 'tag', text: p.field }),
-            h('span', { class: 'tag', text: '경력 ' + p.years }))),
-        h('div', { class: 'pcard-topic' },
-          h('p', { class: 'k', text: '이런 이야기를 나누고 싶어요' }),
-          h('p', { class: 'v', text: '“' + p.topic + '”' })),
-        section('대표 경험', h('ul', { class: 'bul' }, (p.experiences || []).map((x) => h('li', { text: x })))),
-        careers.length ? section('이전 경력', h('ul', { class: 'careers' }, careers.map((c) =>
-          h('li', null, h('span', { class: 'period', text: c.period || '' }),
-            h('span', { text: [c.org, c.role].filter(Boolean).join(' · ') }))))) : null,
-        (p.keywords || []).length ? section(
-          ['관심 키워드', shared.length ? h('span', { class: 'shared-note', text: '나와 같은 관심 ' + shared.length + '개' }) : null],
-          h('div', { class: 'chips static' }, p.keywords.map((k) => h('span', { class: 'chip' + (shared.includes(k) ? ' shared' : ''), text: k })))) : null,
-        (p.lookingFor || []).length ? section('찾고 있어요',
-          h('div', { class: 'chips static' }, p.lookingFor.map((k) => h('span', { class: 'chip', text: k })))) : null));
+  function line(name, text) {
+    return h('p', { class: 'ci-line' }, icon(name), h('span', { text }));
+  }
+  function sharedKeywords(p) {
+    const mine = (S.me && S.me.keywords) || [];
+    return p.id === S.pid ? [] : (p.keywords || []).filter((k) => mine.includes(k));
+  }
+  function careersOf(p) {
+    return (p.careers || []).filter((c) => c && (c.org || c.role));
   }
 
-  // ---------- 화면 전환 ----------
+  function cardPage(p, i) {
+    if (i === 0) {
+      return [
+        line('briefcase', p.title),
+        line('building', p.company + (p.companyIntro ? ' · ' + p.companyIntro : '')),
+        h('div', { class: 'ci-chips' }, h('span', { class: 'ci-chip', text: p.field })),
+      ];
+    }
+    if (i === 1) {
+      const careers = careersOf(p);
+      return [
+        h('p', { class: 'ci-k', text: '대표 경험' }),
+        h('ul', { class: 'ci-list' }, (p.experiences || []).map((x) => h('li', { text: x }))),
+        careers.length ? h('p', { class: 'ci-k', text: '이전 경력' }) : null,
+        careers.length ? h('ul', { class: 'ci-list' }, careers.map((c) => h('li', null,
+          c.period ? h('span', { class: 'ci-period', text: c.period }) : null,
+          [c.org, c.role].filter(Boolean).join(' · ')))) : null,
+      ];
+    }
+    const shared = sharedKeywords(p);
+    return [
+      h('p', { class: 'ci-k', text: '이런 이야기를 나누고 싶어요' }),
+      h('p', { class: 'ci-quote', text: p.topic }),
+      (p.keywords || []).length ? h('div', { class: 'ci-chips' }, p.keywords.map((k) =>
+        h('span', { class: 'ci-chip' + (shared.includes(k) ? ' shared' : ''), text: k }))) : null,
+    ];
+  }
+
+  function setPage(card, i) {
+    card._page = i;
+    card.querySelectorAll('.bars i').forEach((b, k) => b.classList.toggle('on', k === i));
+    card.classList.toggle('deep', i > 0);
+    const p = card._p;
+    card.querySelector('.ci').replaceChildren(
+      h('h3', { class: 'ci-name' }, p.name, h('span', { class: 'ci-years', text: p.years })),
+      ...cardPage(p, i).filter(Boolean));
+  }
+  function tapCard(card, clientX) {
+    const r = card.getBoundingClientRect();
+    const dir = clientX - r.left > r.width / 2 ? 1 : -1;
+    const next = Math.max(0, Math.min(PAGES - 1, card._page + dir));
+    if (next !== card._page) setPage(card, next);
+  }
+
+  function cardEl(p, { swipe = false } = {}) {
+    const card = h('article', { class: 'card', 'data-id': p.id },
+      ...visualEls(p),
+      h('div', { class: 'bars', 'aria-hidden': 'true' }, Array.from({ length: PAGES }, () => h('i'))),
+      swipe ? [h('span', { class: 'stamp like', 'aria-hidden': 'true' }, 'LIKE'), h('span', { class: 'stamp nope', 'aria-hidden': 'true' }, 'NOPE')] : null,
+      h('div', { class: 'ci' }),
+      h('button', {
+        type: 'button', class: 'card-more', 'aria-label': p.name + ' 프로필 자세히 보기',
+        onclick: (e) => { e.stopPropagation(); openSheet(p); },
+      }, icon('up')));
+    card._p = p;
+    setPage(card, 0);
+    if (!swipe) {
+      card.addEventListener('click', (e) => { if (!e.target.closest('.card-more')) tapCard(card, e.clientX); });
+    }
+    return card;
+  }
+
+  // ---------- 화면 결정 ----------
   function visibleProfiles() {
     return [...S.profiles.values()].filter((p) => !p.hidden);
   }
   function isFinished() {
     return S.swipes.likes.length >= MAX || !!(S.me && S.me.done);
   }
+  function unlocked() {
+    return isFinished() || S.phase === 'ended';
+  }
 
   function decide() {
     if (location.hash === '#admin') return 'admin';
-    if (S.pending) return 'profile';
-    if (!S.pid) return 'entry';
-    if (S.editing) return 'profile';
+    if (!S.pid || S.editing) return 'onboard';
     if (!S.me) return 'loading';
-    if (S.phase === 'registration') return 'wait';
-    if (S.phase === 'ended') return 'result';
-    if (isFinished() && !S.continuing) return 'result';
-    return 'swipe';
+    return 'app';
   }
 
   function route() {
     if (!S.store || S.view === 'error') return;
     const next = decide();
     if (next !== S.view) {
-      const prev = S.view;
       S.view = next;
-      VIEWS.forEach((v) => { $('screen-' + v).hidden = v !== next; });
-      $('app').classList.toggle('fill', next === 'swipe');
+      VIEWS.forEach((v) => { $('view-' + v).hidden = v !== next; });
       $('app').classList.toggle('wide', next === 'admin');
-      if (prev) window.scrollTo(0, 0);
-      enter(next);
+      $('demo-chip').hidden = !(S.store.mode === 'demo' && next !== 'admin');
+      if (next === 'onboard') {
+        if (S.editing) startOnboarding('edit');
+        else if (!OB.mode || OB.mode === 'edit') startOnboarding('login');
+      }
+      if (next === 'admin') enterAdmin();
+      if (next === 'app') S.renderedTop = null;
     }
-    $('bar-profile').hidden = !(S.pid && S.me && ['wait', 'swipe', 'result'].includes(S.view));
     render();
   }
 
-  function enter(view) {
-    if (view === 'profile') fillForm();
-    if (view === 'swipe') { S.renderedTop = null; syncDeck(); }
-    if (view === 'admin') enterAdmin();
-  }
-
   function render() {
-    if (S.view === 'wait') renderWait();
-    else if (S.view === 'swipe') renderSwipe();
-    else if (S.view === 'result') renderResult();
+    if (S.view === 'app') renderApp();
     else if (S.view === 'admin') renderAdmin();
     if (S.store && S.store.mode === 'demo') {
-      const names = { registration: '등록', swipe: '스와이프', ended: '종료' };
-      $('demo-phase').textContent = '단계: ' + names[S.phase] + ' → 바꾸기';
+      $('demo-phase').querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.phase === S.phase)));
     }
   }
 
@@ -213,46 +281,8 @@
     $('error-title').textContent = title;
     $('error-text').textContent = text;
     $('error-detail').textContent = detail || '';
-    VIEWS.forEach((v) => { $('screen-' + v).hidden = v !== 'error'; });
+    VIEWS.forEach((v) => { $('view-' + v).hidden = v !== 'error'; });
     S.view = 'error';
-  }
-
-  // ---------- 1. 입장 ----------
-  async function onEntry(e) {
-    e.preventDefault();
-    const err = $('entry-error');
-    const name = cleanText($('entry-name').value, 20);
-    const pin = $('entry-pin').value.trim();
-    err.hidden = true;
-    let msg = '';
-    if (name.length < 2) msg = '이름을 입력해 주세요.';
-    else if (!/^\d{4}$/.test(pin)) msg = '휴대폰 번호 뒤 4자리를 숫자로 입력해 주세요.';
-    else if (!$('entry-consent').checked) msg = '프로필 공개에 동의해야 참여할 수 있어요.';
-    if (msg) { err.textContent = msg; err.hidden = false; return; }
-
-    const btn = $('entry-submit');
-    btn.disabled = true;
-    btn.textContent = '확인하는 중';
-    try {
-      const hash = await keyHash(name, pin);
-      const pid = await S.store.findKey(hash);
-      if (pid) await S.store.claim(hash, pid);
-      if (pid && (!S.profilesLoaded || S.profiles.has(pid))) {
-        await enterAs(pid);
-        toast(name + '님, 다시 오셨네요. 저장된 프로필을 불러왔어요.');
-      } else {
-        // 처음 왔거나, 운영진이 프로필을 지운 경우(키는 남아 있음) 새로 입력
-        S.pending = { name, hash, pid: pid || null };
-      }
-      route();
-    } catch (ex) {
-      console.error(ex);
-      err.textContent = '확인하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.';
-      err.hidden = false;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '시작하기';
-    }
   }
 
   async function enterAs(pid) {
@@ -263,6 +293,7 @@
     S.swipes = { likes: [], passes: [] };
     S.inbox = [];
     S.deckOrder = [];
+    S.tab = 'swipe';
     store.set(LS_PID, pid);
     S.unsub.push(S.store.watchSwipes(pid, (sw) => {
       S.swipes = { likes: (sw.likes || []).slice(), passes: (sw.passes || []).slice() };
@@ -270,15 +301,103 @@
     }));
     S.unsub.push(S.store.watchInbox(pid, (list) => { S.inbox = list; onData(); }));
   }
+  function signOut() {
+    S.unsub.forEach((u) => u());
+    S.unsub = [];
+    S.pid = null;
+    S.me = null;
+    S.editing = false;
+    OB.mode = null;
+    store.del(LS_PID);
+  }
 
-  // ---------- 2. 프로필 입력 ----------
-  const F = { field: '', keywords: [], looking: [], logo: null, extraKeywords: [] };
+  // ---------- 가입·프로필 입력 (한 화면에 질문 하나) ----------
+  const PROFILE_STEPS = ['company', 'logo', 'job', 'exp', 'career', 'topic', 'tags'];
+  const OB = { mode: null, steps: [], i: 0, d: null, hash: null, pid: null, busy: false };
 
-  function choiceChips(container, options, selected, { single = false, max = 99, label } = {}) {
+  function blankDraft() {
+    return { name: '', pin: '', company: '', companyIntro: '', logo: null, title: '', field: '', years: '',
+      experiences: ['', '', ''], careers: [], topic: '', keywords: [], lookingFor: [], extraKeywords: [] };
+  }
+  function draftFrom(p) {
+    const d = blankDraft();
+    Object.assign(d, {
+      name: p.name, company: p.company, companyIntro: p.companyIntro || '', logo: p.logo || null,
+      title: p.title, field: p.field, years: p.years, topic: p.topic,
+      keywords: (p.keywords || []).slice(), lookingFor: (p.lookingFor || []).slice(),
+      careers: careersOf(p).map((c) => Object.assign({}, c)),
+    });
+    const ex = (p.experiences || []).slice(0, 3);
+    d.experiences = [ex[0] || '', ex[1] || '', ex[2] || ''];
+    d.extraKeywords = d.keywords.filter((k) => !KEYWORDS.includes(k));
+    return d;
+  }
+
+  function startOnboarding(mode) {
+    OB.mode = mode;
+    OB.i = 0;
+    OB.hash = null;
+    OB.pid = null;
+    if (mode === 'edit') {
+      OB.steps = PROFILE_STEPS.slice();
+      OB.d = draftFrom(S.me);
+    } else {
+      OB.steps = ['welcome', 'name', 'pin', 'rules'].concat(PROFILE_STEPS);
+      OB.d = blankDraft();
+    }
+    fillInputs();
+    showStep();
+  }
+
+  function fillInputs() {
+    const d = OB.d;
+    const ex = ND.EXAMPLE_PROFILE || {};
+    $('in-name').value = d.name;
+    $('in-pin').value = '';
+    $('pin-error').hidden = true;
+    $('in-company').value = d.company;
+    $('in-company').placeholder = '예) ' + (ex.company || '');
+    $('in-intro').value = d.companyIntro;
+    $('in-intro').placeholder = '예) ' + (ex.companyIntro || '');
+    $('in-title').value = d.title;
+    $('in-title').placeholder = '예) ' + (ex.title || '');
+    $('in-topic').value = d.topic;
+    $('in-topic').placeholder = '예) ' + (ex.topic || '');
+    $('topic-count').textContent = d.topic.length + '/60';
+    const exExps = ex.experiences || [];
+    $('in-exps').replaceChildren(...[0, 1, 2].map((i) => h('input', {
+      class: 'box-input', type: 'text', maxlength: 60, 'aria-label': '대표 경험 ' + (i + 1),
+      placeholder: i < exExps.length ? '예) ' + exExps[i] : '경험 하나 더 (선택)', value: d.experiences[i],
+      oninput: (e) => { d.experiences[i] = e.target.value; syncNext(); },
+    })));
+    renderCareers();
+    renderPills();
+    renderLogoSlot();
+  }
+
+  function renderCareers() {
+    const d = OB.d;
+    const ex = (ND.EXAMPLE_PROFILE && ND.EXAMPLE_PROFILE.careers[0]) || { period: '2018–2021', org: '한빛대 지능로봇연구실', role: '연구원' };
+    $('in-careers').replaceChildren(...d.careers.map((c, idx) => {
+      const field = (key, ph, cls) => h('input', {
+        class: 'box-input' + (cls ? ' ' + cls : ''), type: 'text', maxlength: key === 'period' ? 20 : 30,
+        'aria-label': { period: '기간', org: '소속', role: '역할' }[key], placeholder: '예) ' + ph, value: c[key] || '',
+        oninput: (e) => { c[key] = e.target.value; syncNext(); },
+      });
+      return h('div', { class: 'career' },
+        field('period', ex.period),
+        h('button', { type: 'button', class: 'text-btn del', onclick: () => { d.careers.splice(idx, 1); renderCareers(); syncNext(); } }, '삭제'),
+        field('org', ex.org, 'full'),
+        field('role', ex.role, 'full'));
+    }));
+    $('career-add').hidden = d.careers.length >= MAX_CAREERS;
+  }
+
+  function pills(container, options, selected, { single = false, max = 99, label = '' } = {}) {
     container.replaceChildren(...options.map((opt) => {
       const on = selected.includes(opt);
       return h('button', {
-        type: 'button', class: 'chip',
+        type: 'button', class: 'pill',
         role: single ? 'radio' : null,
         'aria-checked': single ? String(on) : null,
         'aria-pressed': single ? null : String(on),
@@ -287,99 +406,50 @@
           else if (selected.includes(opt)) selected.splice(selected.indexOf(opt), 1);
           else if (selected.length >= max) { toast(label + '은(는) 최대 ' + max + '개까지 고를 수 있어요.'); return; }
           else selected.push(opt);
-          choiceChips(container, options, selected, { single, max, label });
+          renderPills();
+          syncNext();
         },
       }, opt);
     }));
   }
-
-  function renderLogoPreview() {
-    const box = $('logo-preview');
-    const company = $('f-company').value.trim();
-    const fresh = F.logo || company ? logoEl({ logo: F.logo, company }, 'lg') : h('div', { class: 'logo lg empty' }, h('span', null, '로고'));
-    fresh.id = 'logo-preview';
-    box.replaceWith(fresh);
-    $('logo-clear').hidden = !F.logo;
-  }
-
-  function careerRow(c, ex) {
-    const row = h('div', { class: 'career-row' },
-      h('input', { type: 'text', class: 'period', maxlength: 20, 'aria-label': '기간', placeholder: '예) ' + ex.period, value: c.period || '' }),
-      h('button', { type: 'button', class: 'btn small ghost remove', onclick: () => { row.remove(); syncCareerAdd(); } }, '삭제'),
-      h('input', { type: 'text', class: 'org', maxlength: 30, 'aria-label': '소속', placeholder: '예) ' + ex.org, value: c.org || '' }),
-      h('input', { type: 'text', class: 'role', maxlength: 30, 'aria-label': '역할', placeholder: '예) ' + ex.role, value: c.role || '' }));
-    return row;
-  }
-  function syncCareerAdd() {
-    $('career-add').hidden = $('f-careers').children.length >= MAX_CAREERS;
-  }
-
-  function fillForm() {
-    const ex = ND.EXAMPLE_PROFILE || {};
-    const exCareer = (ex.careers && ex.careers[0]) || { period: '2018–2021', org: '한빛대 지능로봇연구실', role: '연구원' };
-    const p = S.pending ? null : S.me;
-    const editing = !!p;
-    $('profile-heading').textContent = editing ? '내 프로필 수정' : '내 프로필 만들기';
-    $('profile-submit').textContent = editing ? '저장하기' : '저장하고 계속';
-    $('profile-cancel').hidden = !editing;
-    $('profile-error').hidden = true;
-
-    $('f-name').value = editing ? p.name : S.pending.name;
-    $('f-company').value = editing ? p.company : '';
-    $('f-company').placeholder = '예) ' + (ex.company || '');
-    $('f-intro').value = editing ? (p.companyIntro || '') : '';
-    $('f-intro').placeholder = '예) ' + (ex.companyIntro || '');
-    $('f-title').value = editing ? p.title : '';
-    $('f-title').placeholder = '예) ' + (ex.title || '');
-    $('f-topic').value = editing ? p.topic : '';
-    $('f-topic').placeholder = '예) ' + (ex.topic || '');
-    updateTopicCount();
-
-    F.field = editing ? p.field : '';
-    F.logo = editing ? (p.logo || null) : null;
-    F.keywords = editing ? (p.keywords || []).slice() : [];
-    F.looking = editing ? (p.lookingFor || []).slice() : [];
-    F.extraKeywords = F.keywords.filter((k) => !KEYWORDS.includes(k));
-
-    const fieldSel = F.field ? [F.field] : [];
-    F.fieldSel = fieldSel;
-    choiceChips($('f-field'), FIELDS, fieldSel, { single: true });
-    $('f-years').replaceChildren(h('option', { value: '' }, '선택해 주세요'),
-      ...YEARS.map((y) => h('option', { value: y, selected: editing && p.years === y ? true : null }, y)));
-    renderKeywordChips();
-    choiceChips($('f-looking'), LOOKING, F.looking, { max: MAX_LOOKING, label: '찾고 있어요' });
-
-    const exps = editing ? (p.experiences || []) : [];
-    const exExps = ex.experiences || [];
-    $('f-exps').replaceChildren(...[0, 1, 2].map((i) => h('input', {
-      type: 'text', maxlength: 60, 'aria-label': '대표 경험 ' + (i + 1),
-      placeholder: i < exExps.length ? '예) ' + exExps[i] : '(선택) 경험 하나 더',
-      value: exps[i] || '',
-    })));
-
-    const careers = editing ? (p.careers || []) : [];
-    $('f-careers').replaceChildren(...(careers.length ? careers : [{}]).slice(0, MAX_CAREERS).map((c) => careerRow(c, exCareer)));
-    syncCareerAdd();
-    renderLogoPreview();
-  }
-
-  function renderKeywordChips() {
-    choiceChips($('f-keywords'), KEYWORDS.concat(F.extraKeywords), F.keywords, { max: MAX_KEYWORDS, label: '관심 키워드' });
+  function renderPills() {
+    const d = OB.d;
+    d._field = d._field || (d.field ? [d.field] : []);
+    d._years = d._years || (d.years ? [d.years] : []);
+    pills($('in-field'), FIELDS, d._field, { single: true });
+    pills($('in-years'), YEARS, d._years, { single: true });
+    d.field = d._field[0] || '';
+    d.years = d._years[0] || '';
+    pills($('in-keywords'), KEYWORDS.concat(d.extraKeywords), d.keywords, { max: MAX_KEYWORDS, label: '관심 키워드' });
+    pills($('in-looking'), LOOKING, d.lookingFor, { max: MAX_LOOKING, label: '찾고 있어요' });
   }
   function addCustomKeyword() {
-    const input = $('kw-custom');
-    const v = cleanText(input.value, 15);
+    const d = OB.d;
+    const v = cleanText($('kw-custom').value, 15);
     if (!v) return;
-    if (!KEYWORDS.includes(v) && !F.extraKeywords.includes(v)) F.extraKeywords.push(v);
-    if (!F.keywords.includes(v)) {
-      if (F.keywords.length >= MAX_KEYWORDS) { toast('관심 키워드는 최대 ' + MAX_KEYWORDS + '개까지 고를 수 있어요.'); return; }
-      F.keywords.push(v);
+    if (!KEYWORDS.includes(v) && !d.extraKeywords.includes(v)) d.extraKeywords.push(v);
+    if (!d.keywords.includes(v)) {
+      if (d.keywords.length >= MAX_KEYWORDS) { toast('관심 키워드는 최대 ' + MAX_KEYWORDS + '개까지 고를 수 있어요.'); return; }
+      d.keywords.push(v);
     }
-    input.value = '';
-    renderKeywordChips();
+    $('kw-custom').value = '';
+    renderPills();
   }
-  function updateTopicCount() {
-    $('topic-count').textContent = $('f-topic').value.length + ' / 60';
+
+  function renderLogoSlot() {
+    const d = OB.d;
+    const slot = $('logo-slot');
+    const badge = $('logo-badge');
+    if (d.logo || cleanText(d.company, 30)) {
+      slot.replaceChildren(logoEl({ logo: d.logo, company: d.company }));
+      slot.classList.add('filled');
+    } else {
+      slot.replaceChildren();
+      slot.classList.remove('filled');
+    }
+    badge.replaceChildren(icon(d.logo ? 'x' : 'plus'));
+    badge.classList.toggle('remove', !!d.logo);
+    badge.setAttribute('aria-label', d.logo ? '로고 지우기' : '로고 추가');
   }
 
   function processLogo(file) {
@@ -415,90 +485,176 @@
     });
   }
 
-  function collectForm() {
-    const data = {
-      company: cleanText($('f-company').value, 30),
-      companyIntro: cleanText($('f-intro').value, 40),
-      logo: F.logo || null,
-      title: cleanText($('f-title').value, 30),
-      field: F.fieldSel[0] || '',
-      years: $('f-years').value,
-      experiences: [...$('f-exps').querySelectorAll('input')].map((i) => cleanText(i.value, 60)).filter(Boolean),
-      careers: [...$('f-careers').children].map((row) => ({
-        period: cleanText(row.querySelector('.period').value, 20),
-        org: cleanText(row.querySelector('.org').value, 30),
-        role: cleanText(row.querySelector('.role').value, 30),
-      })).filter((c) => c.org || c.role),
-      keywords: F.keywords.slice(0, MAX_KEYWORDS),
-      lookingFor: F.looking.slice(0, MAX_LOOKING),
-      topic: cleanText($('f-topic').value, 60),
-    };
-    const missing = [];
-    if (!data.company) missing.push(['회사·기관명', 'f-company']);
-    if (!data.title) missing.push(['직함·직무', 'f-title']);
-    if (!data.field) missing.push(['직무 분야', null]);
-    if (!data.years) missing.push(['경력 연차', 'f-years']);
-    if (!data.experiences.length) missing.push(['대표 경험', null]);
-    if (!data.topic) missing.push(['이런 이야기를 나누고 싶어요', 'f-topic']);
-    return { data, missing };
+  const stepId = () => OB.steps[OB.i];
+  function valid(id) {
+    const d = OB.d;
+    if (id === 'name') return cleanText(d.name, 20).length >= 2;
+    if (id === 'pin') return /^\d{4}$/.test(d.pin);
+    if (id === 'company') return !!cleanText(d.company, 30);
+    if (id === 'job') return !!cleanText(d.title, 30) && !!d.field && !!d.years;
+    if (id === 'exp') return d.experiences.some((x) => cleanText(x, 60));
+    if (id === 'topic') return !!cleanText(d.topic, 60);
+    return true;
+  }
+  function nextLabel(id) {
+    const d = OB.d;
+    if (id === 'welcome') return '시작하기';
+    if (id === 'rules') return '동의합니다';
+    if (id === 'logo') return d.logo ? '계속' : '로고 없이 계속';
+    if (id === 'career') return d.careers.some((c) => cleanText(c.org, 30) || cleanText(c.role, 30)) ? '계속' : '건너뛰기';
+    if (id === 'tags') return OB.mode === 'edit' ? '저장하기' : '완료';
+    return '계속';
+  }
+  function syncNext() {
+    const id = stepId();
+    const btn = $('ob-next');
+    btn.disabled = OB.busy || !valid(id);
+    btn.textContent = OB.busy ? '잠시만요' : nextLabel(id);
   }
 
-  async function onProfileSubmit(e) {
-    e.preventDefault();
-    const { data, missing } = collectForm();
-    const err = $('profile-error');
-    if (missing.length) {
-      err.textContent = '아직 비어 있어요: ' + missing.map((m) => m[0]).join(', ');
-      err.hidden = false;
-      const first = missing[0][1] ? $(missing[0][1]) : (missing[0][0] === '대표 경험' ? $('f-exps').querySelector('input') : $('f-field').querySelector('button'));
-      if (first) first.focus();
-      return;
-    }
-    err.hidden = true;
-    const btn = $('profile-submit');
-    btn.disabled = true;
-    const label = btn.textContent;
-    btn.textContent = '저장하는 중';
+  function showStep() {
+    const id = stepId();
+    document.querySelectorAll('.ob-step').forEach((s) => { s.hidden = s.dataset.step !== id; });
+    $('view-onboard').classList.toggle('is-welcome', id === 'welcome');
+    const counted = OB.steps.filter((s) => s !== 'welcome');
+    const pos = OB.steps.slice(0, OB.i + 1).filter((s) => s !== 'welcome').length;
+    $('ob-bar').style.width = (pos / counted.length) * 100 + '%';
+    $('ob-back').hidden = id === 'welcome';
+    $('ob-foot-note').hidden = id !== 'welcome';
+    $('ob-body').scrollTop = 0;
+    syncNext();
+    const focusTarget = { name: 'in-name', pin: 'in-pin', company: 'in-company', job: 'in-title', topic: 'in-topic' }[id];
+    if (focusTarget) setTimeout(() => { if (S.view === 'onboard' && stepId() === id) $(focusTarget).focus({ preventScroll: true }); }, 60);
+  }
+
+  function obBack() {
+    if (OB.busy) return;
+    if (OB.i === 0 && OB.mode === 'edit') { S.editing = false; OB.mode = null; route(); return; }
+    if (OB.i > 0) { OB.i--; showStep(); }
+  }
+
+  async function obNext() {
+    const id = stepId();
+    if (OB.busy || !valid(id)) return;
+    if (id === 'pin') { await lookup(); return; }
+    if (OB.i === OB.steps.length - 1) { await saveProfile(); return; }
+    OB.i++;
+    showStep();
+  }
+
+  async function lookup() {
+    const d = OB.d;
+    OB.busy = true; syncNext();
+    $('pin-error').hidden = true;
     try {
-      if (S.pending) {
-        const name = S.pending.name;
-        S.creating = true;
-        const pid = await S.store.createProfile(S.pending.hash, Object.assign({ name }, data), S.pending.pid);
-        S.pending = null;
+      d.name = cleanText(d.name, 20);
+      const hash = await keyHash(d.name, d.pin);
+      const pid = await S.store.findKey(hash);
+      if (pid) await S.store.claim(hash, pid);
+      if (pid && (!S.profilesLoaded || S.profiles.has(pid))) {
+        OB.mode = null;
         await enterAs(pid);
-        S.me = S.profiles.get(pid) || Object.assign({ id: pid, name, hidden: false, done: false }, data);
-        S.creating = false;
-        toast('프로필을 저장했어요.');
+        toast(d.name + '님, 다시 오셨네요.');
+        route();
       } else {
+        // 처음 왔거나, 운영진이 프로필을 지운 경우(키는 남아 있음) 새로 입력
+        OB.hash = hash;
+        OB.pid = pid || null;
+        OB.i++;
+        showStep();
+      }
+    } catch (ex) {
+      console.error(ex);
+      $('pin-error').textContent = '확인하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.';
+      $('pin-error').hidden = false;
+    } finally {
+      OB.busy = false;
+      if (S.view === 'onboard') syncNext();
+    }
+  }
+
+  function collectProfile() {
+    const d = OB.d;
+    return {
+      company: cleanText(d.company, 30),
+      companyIntro: cleanText(d.companyIntro, 40),
+      logo: d.logo || null,
+      title: cleanText(d.title, 30),
+      field: d.field,
+      years: d.years,
+      experiences: d.experiences.map((x) => cleanText(x, 60)).filter(Boolean),
+      careers: d.careers.map((c) => ({
+        period: cleanText(c.period, 20), org: cleanText(c.org, 30), role: cleanText(c.role, 30),
+      })).filter((c) => c.org || c.role),
+      keywords: d.keywords.slice(0, MAX_KEYWORDS),
+      lookingFor: d.lookingFor.slice(0, MAX_LOOKING),
+      topic: cleanText(d.topic, 60),
+    };
+  }
+
+  async function saveProfile() {
+    const data = collectProfile();
+    OB.busy = true; syncNext();
+    try {
+      if (OB.mode === 'edit') {
         await S.store.updateProfile(S.pid, data);
         S.me = Object.assign({}, S.me, data);
         S.editing = false;
-        toast('수정한 내용을 저장했어요.');
+        OB.mode = null;
+        S.tab = 'me';
+        toast('프로필을 저장했어요.');
+      } else {
+        const name = OB.d.name;
+        S.creating = true;
+        const pid = await S.store.createProfile(OB.hash, Object.assign({ name }, data), OB.pid);
+        await enterAs(pid);
+        S.me = S.profiles.get(pid) || Object.assign({ id: pid, name, hidden: false, done: false }, data);
+        S.creating = false;
+        OB.mode = null;
       }
       route();
     } catch (ex) {
       console.error(ex);
       S.creating = false;
-      err.textContent = '저장하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.';
-      err.hidden = false;
+      toast('저장하지 못했어요. 인터넷 연결을 확인하고 다시 시도해 주세요.');
     } finally {
-      btn.disabled = false;
-      btn.textContent = label;
+      OB.busy = false;
+      if (S.view === 'onboard') syncNext();
     }
   }
 
-  // ---------- 3. 대기 ----------
-  function renderWait() {
-    $('wait-count').textContent = String(visibleProfiles().length);
-    $('wait-cap').textContent = '명 등록 · 최대 ' + CAP + '명';
-    const key = JSON.stringify(S.me) + (S.me && S.me.keywords);
-    if ($('wait-card').dataset.key !== key) {
-      $('wait-card').dataset.key = key;
-      $('wait-card').replaceChildren(cardEl(S.me));
-    }
+  // ---------- 메인 ----------
+  function inboxPeople() {
+    const mine = new Set(S.swipes.likes);
+    return S.inbox
+      .map((x) => ({ p: S.profiles.get(x.id), at: x.at }))
+      .filter((x) => x.p && !x.p.hidden && x.p.id !== S.pid)
+      .sort((a, b) => (mine.has(b.p.id) - mine.has(a.p.id)) || (b.at - a.at));
+  }
+  function minePeople() {
+    return S.swipes.likes.map((id) => S.profiles.get(id)).filter((p) => p && !p.hidden);
   }
 
-  // ---------- 4. 스와이프 ----------
+  function renderApp() {
+    ['swipe', 'likes', 'me'].forEach((t) => {
+      $('tab-' + t).hidden = S.tab !== t;
+      const b = $('tb-' + t);
+      if (S.tab === t) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+    const n = inboxPeople().length;
+    $('tb-badge').hidden = n === 0;
+    $('tb-badge').textContent = String(n);
+    if (S.tab === 'swipe') renderSwipeTab();
+    else if (S.tab === 'likes') renderLikesTab();
+    else renderMeTab();
+  }
+  function goTab(t) {
+    S.tab = t;
+    if (t === 'swipe') S.renderedTop = null;
+    renderApp();
+  }
+
+  // --- 스와이프 탭 ---
   function candidates() {
     const seen = new Set(S.swipes.likes.concat(S.swipes.passes));
     return visibleProfiles().filter((p) => p.id !== S.pid && !seen.has(p.id));
@@ -511,66 +667,75 @@
     S.deckOrder.push(...fresh);
   }
 
-  function renderSwipe() {
-    syncDeck();
-    const likes = S.swipes.likes;
-    $('picks-count').textContent = String(likes.length);
-    $('picks-max').textContent = String(MAX);
-    $('deck-left').textContent = String(S.deckOrder.length);
-    const slots = [];
-    for (let i = 0; i < MAX; i++) {
-      const p = S.profiles.get(likes[i]);
-      slots.push(p
-        ? h('button', { type: 'button', class: 'slot filled', 'aria-label': p.name + ' 프로필 보기', onclick: () => openSheet(p) }, logoEl(p, 'xs'))
-        : h('span', { class: 'slot', 'aria-hidden': 'true' }));
-    }
-    $('picks').replaceChildren(...slots);
-    $('btn-undo').disabled = !S.last;
-    const empty = S.deckOrder.length === 0;
-    $('btn-like').disabled = empty;
-    $('btn-pass').disabled = empty;
+  function swipeMode() {
+    if (S.phase === 'registration') return 'wait';
+    if (S.phase === 'ended') return 'ended';
+    if (isFinished() && !S.continuing) return 'done';
+    if (!S.deckOrder.length) return 'empty';
+    return 'deck';
+  }
 
-    const top = S.deckOrder[0] || null;
+  function renderSwipeTab() {
+    syncDeck();
+    $('pick-count').replaceChildren(icon('heart'), S.swipes.likes.length + ' / ' + MAX);
+    const mode = swipeMode();
+    $('deck-area').hidden = mode !== 'deck';
+    $('radar').hidden = mode === 'deck';
+    if (mode !== 'deck') { renderRadar(mode); S.renderedTop = null; return; }
+
+    $('btn-undo').disabled = !S.last;
+    const top = S.deckOrder[0];
     const second = S.deckOrder[1] || null;
     const key = top + '|' + second;
     if (acting || S.renderedTop === key) return;
     S.renderedTop = key;
-    const deck = $('deck');
-    if (!top) {
-      deck.replaceChildren(h('div', { class: 'deck-empty' },
-        h('b', null, '아직 넘겨볼 카드가 없어요'),
-        h('span', null, '다른 참가자가 프로필을 등록하면 여기에 바로 나타나요.')));
-      return;
-    }
     const kids = [];
     if (second && S.profiles.get(second)) {
-      const back = cardEl(S.profiles.get(second));
+      const back = cardEl(S.profiles.get(second), { swipe: true });
       back.classList.add('back');
       back.setAttribute('aria-hidden', 'true');
       kids.push(back);
     }
-    const front = cardEl(S.profiles.get(top));
+    const front = cardEl(S.profiles.get(top), { swipe: true });
     front.classList.add('top');
-    front.prepend(h('span', { class: 'stamp like', 'aria-hidden': 'true' }, '대화하고 싶어요'),
-      h('span', { class: 'stamp pass', 'aria-hidden': 'true' }, '넘기기'));
     bindDrag(front);
     kids.push(front);
-    deck.replaceChildren(...kids);
+    $('deck').replaceChildren(...kids);
+  }
+
+  function renderRadar(mode) {
+    const n = visibleProfiles().length;
+    const likes = S.swipes.likes.length;
+    const more = S.phase === 'swipe' && likes < MAX ? S.deckOrder.length : 0;
+    $('radar-ring').classList.toggle('live', mode === 'wait' || mode === 'empty');
+    if (S.me) $('radar-logo').replaceChildren(logoEl(S.me));
+    const goLikes = () => h('button', { type: 'button', class: 'cta', onclick: () => { S.likesTab = 'in'; goTab('likes'); } }, 'LIKE 확인하기');
+    const content = {
+      wait: ['곧 카드가 열려요', '지금 ' + n + '명 참여 중이에요. 운영진이 시작하면 이 화면이 바로 바뀌어요.', []],
+      empty: ['새 참가자를 기다리는 중', '다른 참가자가 등록하면 바로 카드가 나타나요.', []],
+      done: [likes >= MAX ? MAX + '명을 모두 골랐어요' : '카드를 모두 넘겼어요',
+        'LIKE에서 누가 나를 골랐는지 확인하고 찾아가 인사해 보세요.',
+        [goLikes(), more ? h('button', { type: 'button', class: 'ghost-btn', onclick: () => { S.continuing = true; S.renderedTop = null; render(); } }, '새로 온 ' + more + '명 카드 보기') : null]],
+      ended: ['네트워킹 시간이에요', '명찰의 이름과 회사를 보고 찾아가 인사해 보세요.', [goLikes()]],
+    }[mode];
+    $('radar-title').textContent = content[0];
+    $('radar-text').textContent = content[1];
+    $('radar-actions').replaceChildren(...content[2].filter(Boolean));
   }
 
   function bindDrag(card) {
-    let sx = 0, sy = 0, dx = 0, pointer = null, decided = false, dragging = false;
+    let sx = 0, sy = 0, dx = 0, pointer = null, decided = false, dragging = false, moved = false;
     const like = card.querySelector('.stamp.like');
-    const pass = card.querySelector('.stamp.pass');
+    const nope = card.querySelector('.stamp.nope');
     const reset = () => {
       card.classList.remove('dragging');
       card.style.transform = '';
       like.style.opacity = 0;
-      pass.style.opacity = 0;
+      nope.style.opacity = 0;
     };
     card.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || card.dataset.leaving) return;
-      sx = e.clientX; sy = e.clientY; dx = 0; pointer = e.pointerId; decided = false; dragging = false;
+      if (e.button !== 0 || card.dataset.leaving || e.target.closest('.card-more')) return;
+      sx = e.clientX; sy = e.clientY; dx = 0; pointer = e.pointerId; decided = false; dragging = false; moved = false;
     });
     card.addEventListener('pointermove', (e) => {
       if (e.pointerId !== pointer) return;
@@ -579,44 +744,47 @@
       if (!decided) {
         if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
         decided = true;
+        moved = true;
         dragging = Math.abs(mx) > Math.abs(my);
         if (dragging) { card.setPointerCapture(pointer); card.classList.add('dragging'); }
       }
       if (!dragging) return;
       dx = mx;
-      card.style.transform = 'translateX(' + dx + 'px) rotate(' + (dx / 22) + 'deg)';
-      like.style.opacity = Math.max(0, Math.min(1, dx / 90));
-      pass.style.opacity = Math.max(0, Math.min(1, -dx / 90));
+      card.style.transform = 'translate(' + dx + 'px,' + (my * 0.2) + 'px) rotate(' + (dx / 18) + 'deg)';
+      like.style.opacity = Math.max(0, Math.min(1, dx / 80));
+      nope.style.opacity = Math.max(0, Math.min(1, -dx / 80));
     });
-    const end = (e) => {
+    card.addEventListener('pointerup', (e) => {
       if (e.pointerId !== pointer) return;
       pointer = null;
+      if (!moved) { tapCard(card, e.clientX); return; }
       if (!dragging) return;
       dragging = false;
       if (dx > 90) act('like');
       else if (dx < -90) act('pass');
       else reset();
-    };
-    card.addEventListener('pointerup', end);
+    });
     card.addEventListener('pointercancel', (e) => { if (e.pointerId === pointer) { pointer = null; dragging = false; reset(); } });
   }
 
   function flyOut(kind) {
-    const card = $('deck').querySelector('.pcard.top');
+    const card = $('deck').querySelector('.card.top');
     if (!card) return Promise.resolve();
     card.dataset.leaving = '1';
     card.classList.remove('dragging');
-    const stamp = card.querySelector(kind === 'like' ? '.stamp.like' : '.stamp.pass');
+    const stamp = card.querySelector(kind === 'like' ? '.stamp.like' : '.stamp.nope');
     if (stamp) stamp.style.opacity = 1;
     const dir = kind === 'like' ? 1 : -1;
-    card.style.transform = 'translateX(' + dir * 130 + '%) rotate(' + dir * 14 + 'deg)';
+    card.style.transform = 'translate(' + dir * 140 + '%, 40px) rotate(' + dir * 22 + 'deg)';
     card.style.opacity = '0';
-    return new Promise((r) => setTimeout(r, 230));
+    const back = $('deck').querySelector('.card.back');
+    if (back) back.classList.remove('back');
+    return new Promise((r) => setTimeout(r, 260));
   }
 
   let acting = false;
   async function act(kind) {
-    if (acting || S.view !== 'swipe') return;
+    if (acting || S.view !== 'app' || S.tab !== 'swipe' || swipeMode() !== 'deck') return;
     const id = S.deckOrder[0];
     if (!id) return;
     if (kind === 'like' && S.swipes.likes.length >= MAX) return;
@@ -632,16 +800,15 @@
     enqueue(() => S.store.saveSwipe(S.pid, { likes, passes }, kind === 'like' ? { add: id } : null, finished && !wasDone ? true : null));
     await flyOut(kind);
     acting = false;
+    S.renderedTop = null;
     if (finished) {
       S.last = null;
+      const wasContinuing = S.continuing;
       S.continuing = false;
       if (S.me) S.me = Object.assign({}, S.me, { done: true });
-      if (likes.length >= MAX) toast(MAX + '명을 모두 골랐어요. 나를 고른 사람을 확인해 보세요.');
-      route();
-    } else {
-      S.renderedTop = null;
-      render();
+      if (!wasDone || (wasContinuing && likes.length >= MAX)) showFinish();
     }
+    render();
   }
 
   function undo() {
@@ -657,55 +824,107 @@
     render();
   }
 
-  // ---------- 5. 결과 ----------
-  function personEl(p, { mutual }) {
-    return h('li', null, h('button', { type: 'button', class: 'person', onclick: () => openSheet(p, mutual) },
-      logoEl(p, 'sm'),
-      h('span', { class: 'person-main' },
-        h('span', { class: 'person-name' }, p.name, mutual ? h('span', { class: 'badge' }, '서로 선택') : null),
-        h('span', { class: 'person-sub', text: p.company + ' · ' + p.title }),
-        h('span', { class: 'person-topic', text: '“' + p.topic + '”' }))));
+  function showFinish() {
+    const picks = minePeople();
+    const mineIds = new Set(picks.map((p) => p.id));
+    const mutual = inboxPeople().filter((x) => mineIds.has(x.p.id)).length;
+    $('finish-title').textContent = picks.length >= MAX ? MAX + '명 선택 완료!' : '카드를 다 넘겼어요';
+    $('finish-logos').replaceChildren(...picks.map((p) => h('span', { class: 'fl' }, logoEl(p))));
+    $('finish-text').textContent = mutual
+      ? '나를 고른 사람 중 ' + mutual + '명을 나도 골랐어요.'
+      : '이제 누가 나를 골랐는지 확인해 보세요.';
+    $('finish').hidden = false;
   }
 
-  function renderResult() {
-    const mine = S.swipes.likes.map((id) => S.profiles.get(id)).filter((p) => p && !p.hidden);
-    const mineIds = new Set(mine.map((p) => p.id));
-    const inbox = S.inbox
-      .map((x) => ({ p: S.profiles.get(x.id), at: x.at }))
-      .filter((x) => x.p && !x.p.hidden && x.p.id !== S.pid)
-      .sort((a, b) => (mineIds.has(b.p.id) - mineIds.has(a.p.id)) || (b.at - a.at));
-    const inboxIds = new Set(inbox.map((x) => x.p.id));
+  // --- LIKE 탭 ---
+  let likesKey = '';
+  function renderLikesTab() {
+    const open = unlocked();
+    const inList = inboxPeople();
+    const mine = minePeople();
+    const inIds = new Set(inList.map((x) => x.p.id));
+    $('likes-count').textContent = String(inList.length);
+    $('seg-in').textContent = '나를 고른 사람 ' + inList.length;
+    $('seg-out').textContent = '내가 고른 사람 ' + mine.length;
+    $('seg-in').setAttribute('aria-pressed', String(S.likesTab === 'in'));
+    $('seg-out').setAttribute('aria-pressed', String(S.likesTab === 'out'));
 
-    $('inbox-count').textContent = String(inbox.length);
-    $('inbox-list').replaceChildren(...inbox.map((x) => personEl(x.p, { mutual: mineIds.has(x.p.id) })));
-    $('inbox-empty').hidden = inbox.length > 0;
-    $('mine-count').textContent = String(mine.length);
-    $('mine-list').replaceChildren(...mine.map((p) => personEl(p, { mutual: inboxIds.has(p.id) })));
-    $('mine-empty').hidden = mine.length > 0;
+    const key = [S.likesTab, open, S.phase, inList.map((x) => x.p.id + ':' + (x.p.updatedAt || '')).join(','),
+      mine.map((p) => p.id + ':' + (p.updatedAt || '')).join(',')].join('|');
+    if (key === likesKey) return;
+    likesKey = key;
 
-    const mutual = inbox.filter((x) => mineIds.has(x.p.id)).length;
-    if (S.phase === 'ended') {
-      $('result-eyebrow').textContent = '네트워킹 진행 중';
+    const body = $('likes-body');
+    if (S.likesTab === 'in') {
+      if (!inList.length) {
+        body.replaceChildren(h('div', { class: 'empty-box' }, h('b', null, '아직 나를 고른 사람이 없어요'),
+          h('span', null, '다른 참가자들이 카드를 넘기는 중이에요. 누군가 나를 고르면 바로 여기에 나타나요.')));
+      } else if (!open) {
+        body.replaceChildren(
+          h('div', { class: 'locked-grid' }, inList.map((x) => h('div', { class: 'locked-tile', 'aria-hidden': 'true' }, ...visualEls(x.p)))),
+          h('div', { class: 'lock-box' }, icon('lock'),
+            h('b', null, inList.length + '명이 나와 대화하고 싶어해요'),
+            h('p', null, MAX + '명을 모두 고르면 누군지 볼 수 있어요.'),
+            S.phase === 'swipe' ? h('button', { type: 'button', class: 'cta', onclick: () => goTab('swipe') }, '계속 고르기') : null));
+      } else {
+        body.replaceChildren(h('ul', null, inList.map((x) => likeItem(x.p, S.swipes.likes.includes(x.p.id)))));
+      }
+    } else if (!mine.length) {
+      body.replaceChildren(h('div', { class: 'empty-box' }, h('b', null, '아직 고른 사람이 없어요'),
+        S.phase === 'swipe' ? h('button', { type: 'button', class: 'ghost-btn', onclick: () => goTab('swipe') }, '카드 넘기러 가기') : null));
     } else {
-      $('result-eyebrow').textContent = mine.length >= MAX ? MAX + '명 고르기 완료' : '카드를 모두 넘겼어요';
+      body.replaceChildren(h('ul', null, mine.map((p) => likeItem(p, open && inIds.has(p.id)))));
     }
-    $('result-title').textContent = mutual
-      ? '서로 대화하고 싶어한 사람이 ' + mutual + '명 있어요'
-      : '이제 찾아가서 인사해 보세요';
-
-    syncDeck();
-    const more = S.phase === 'swipe' && S.swipes.likes.length < MAX ? S.deckOrder.length : 0;
-    $('more-box').hidden = more === 0;
-    $('more-n').textContent = String(more);
   }
 
-  // ---------- 프로필 시트 ----------
+  function likeItem(p, mutual) {
+    const open = () => openSheet(p, mutual);
+    return h('li', { class: 'li' },
+      h('p', { class: 'li-name' }, p.name, h('span', { text: ', ' + p.years })),
+      h('div', { class: 'li-row' },
+        h('button', { type: 'button', class: 'li-card', onclick: open, 'aria-label': p.name + ' 프로필 보기' },
+          ...visualEls(p),
+          h('span', { class: 'li-meta' },
+            mutual ? h('span', { class: 'li-mutual' }, '서로 선택') : null,
+            h('span', { class: 'li-sub', text: p.company + ' · ' + p.title }))),
+        h('button', { type: 'button', class: 'li-quote', onclick: open },
+          h('span', { class: 'li-q-k' }, icon('quote'), '이런 이야기를 나누고 싶어요'),
+          h('span', { class: 'li-q-v', text: p.topic }))));
+  }
+
+  // --- 프로필 탭 ---
+  let meKey = '';
+  function renderMeTab() {
+    const key = JSON.stringify(S.me);
+    if (key === meKey) return;
+    meKey = key;
+    $('me-card').replaceChildren(cardEl(S.me));
+  }
+
+  // ---------- 프로필 전체 보기 ----------
   function openSheet(p, mutual) {
-    $('sheet-body').replaceChildren(cardEl(p));
-    $('sheet-badge').replaceChildren(mutual ? h('span', { class: 'badge' }, '서로 선택') : '');
+    const shared = sharedKeywords(p);
+    const careers = careersOf(p);
+    const sec = (title, ...body) => h('section', { class: 'sh-sec' }, h('h3', { text: title }), ...body);
+    $('sheet-body').replaceChildren(
+      h('div', { class: 'sh-visual' }, ...visualEls(p),
+        h('button', { type: 'button', class: 'sh-close', 'aria-label': '닫기', 'data-close': '' }, icon('down'))),
+      h('div', { class: 'sh-content' },
+        h('h2', { class: 'sh-name' }, p.name, h('span', { class: 'ci-years', text: p.years })),
+        mutual ? h('span', { class: 'li-mutual' }, '서로 선택') : null,
+        h('div', { class: 'sh-lines' }, line('briefcase', p.title + ' · ' + p.field), line('building', p.company)),
+        sec('이런 이야기를 나누고 싶어요', h('p', { class: 'sh-quote', text: p.topic })),
+        p.companyIntro ? sec('회사가 하는 일', h('p', { text: p.companyIntro })) : null,
+        sec('대표 경험', h('ul', { class: 'ci-list' }, (p.experiences || []).map((x) => h('li', { text: x })))),
+        careers.length ? sec('이전 경력', h('ul', { class: 'ci-list' }, careers.map((c) => h('li', null,
+          c.period ? h('span', { class: 'ci-period', text: c.period }) : null, [c.org, c.role].filter(Boolean).join(' · '))))) : null,
+        (p.keywords || []).length ? sec('관심 키워드', h('div', { class: 'ci-chips' },
+          p.keywords.map((k) => h('span', { class: 'ci-chip' + (shared.includes(k) ? ' shared' : ''), text: k })))) : null,
+        (p.lookingFor || []).length ? sec('찾고 있어요', h('div', { class: 'ci-chips' },
+          p.lookingFor.map((k) => h('span', { class: 'ci-chip', text: k })))) : null));
     $('sheet').hidden = false;
-    $('sheet').querySelector('.sheet-panel').scrollTop = 0;
-    $('sheet').querySelector('.sheet-top [data-close]').focus({ preventScroll: true });
+    $('sheet-body').scrollTop = 0;
+    $('sheet-body').querySelector('.sh-close').focus({ preventScroll: true });
   }
   function closeSheet() { $('sheet').hidden = true; }
 
@@ -715,21 +934,19 @@
     S.admin = await S.store.isAdmin();
     render();
   }
-  function entryUrl() {
-    return location.href.split('#')[0];
-  }
+  const entryUrl = () => location.href.split('#')[0];
   function drawQr(el, size) {
     if (!window.QRCode) { setTimeout(() => drawQr(el, size), 300); return; }
     if (el.dataset.url === entryUrl()) return;
     el.dataset.url = entryUrl();
     el.replaceChildren();
     // eslint-disable-next-line no-new
-    new window.QRCode(el, { text: entryUrl(), width: size, height: size, colorDark: '#15181c', colorLight: '#ffffff', correctLevel: window.QRCode.CorrectLevel.M });
+    new window.QRCode(el, { text: entryUrl(), width: size, height: size, colorDark: '#111111', colorLight: '#ffffff', correctLevel: window.QRCode.CorrectLevel.M });
   }
   const PHASE_TEXT = {
     registration: '프로필 등록 단계로 바꿀까요? 참가자 화면이 대기 화면으로 바뀝니다.',
     swipe: '스와이프를 시작할까요? 등록한 참가자 화면이 바로 카드 화면으로 바뀝니다.',
-    ended: '종료할까요? 참가자는 더 고를 수 없고 결과 화면만 보게 됩니다.',
+    ended: '종료할까요? 참가자는 더 고를 수 없고 LIKE 목록만 보게 됩니다.',
   };
 
   function renderAdmin() {
@@ -739,7 +956,6 @@
     $('phase-seg').querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.phase === S.phase)));
     $('phase-confirm').hidden = !pendingPhase;
     if (pendingPhase) $('phase-confirm-text').textContent = PHASE_TEXT[pendingPhase];
-
     const all = [...S.profiles.values()].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const visible = all.filter((p) => !p.hidden);
     $('st-reg').replaceChildren(String(visible.length), h('small', null, ' / ' + CAP));
@@ -751,7 +967,7 @@
       h('td', { class: 'wrap', text: p.title }),
       h('td', null, h('span', { class: 'state' + (p.done ? ' done' : ''), text: p.done ? '완료' : '진행 전' })),
       h('td', null, h('button', {
-        type: 'button', class: 'btn small ghost' + (p.hidden ? '' : ' danger'),
+        type: 'button', class: 'ghost-btn',
         onclick: () => enqueue(() => S.store.setHidden(p.id, !p.hidden)),
       }, p.hidden ? '다시 보이기' : '숨기기')))));
     $('qr-url').textContent = entryUrl();
@@ -767,64 +983,77 @@
     }
     route();
   }
-  function signOut() {
-    S.unsub.forEach((u) => u());
-    S.unsub = [];
-    S.pid = null;
-    S.me = null;
-    S.editing = false;
-    store.del(LS_PID);
-  }
 
   // ---------- 연결 ----------
   function wire() {
-    $('entry-form').addEventListener('submit', onEntry);
-    $('entry-pin').addEventListener('input', (e) => { e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4); });
-    $('profile-form').addEventListener('submit', onProfileSubmit);
-    $('profile-cancel').addEventListener('click', () => { S.editing = false; route(); });
-    $('f-topic').addEventListener('input', updateTopicCount);
-    $('f-company').addEventListener('input', () => { if (!F.logo) renderLogoPreview(); });
+    $('ob-back').append(icon('back'));
+    $('btn-undo').append(icon('undo'));
+    $('btn-nope').append(icon('x'));
+    $('btn-like').append(icon('heart'));
+    $('tb-swipe').querySelector('.tb-icon').append(icon('cards'));
+    $('tb-likes').querySelector('.tb-icon').append(icon('heartLine'));
+    $('tb-me').querySelector('.tb-icon').append(icon('person'));
+
+    $('ob-next').addEventListener('click', obNext);
+    $('ob-back').addEventListener('click', obBack);
+    $('ob-body').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.matches('input.line-input')) { e.preventDefault(); obNext(); }
+    });
+    $('in-name').addEventListener('input', (e) => { OB.d.name = e.target.value; syncNext(); });
+    $('in-pin').addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+      OB.d.pin = e.target.value;
+      $('pin-error').hidden = true;
+      syncNext();
+    });
+    $('in-company').addEventListener('input', (e) => { OB.d.company = e.target.value; syncNext(); if (!OB.d.logo) renderLogoSlot(); });
+    $('in-intro').addEventListener('input', (e) => { OB.d.companyIntro = e.target.value; });
+    $('in-title').addEventListener('input', (e) => { OB.d.title = e.target.value; syncNext(); });
+    $('in-topic').addEventListener('input', (e) => { OB.d.topic = e.target.value; $('topic-count').textContent = e.target.value.length + '/60'; syncNext(); });
     $('kw-add').addEventListener('click', addCustomKeyword);
     $('kw-custom').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomKeyword(); } });
     $('career-add').addEventListener('click', () => {
-      const ex = (ND.EXAMPLE_PROFILE && ND.EXAMPLE_PROFILE.careers[0]) || { period: '', org: '', role: '' };
-      if ($('f-careers').children.length < MAX_CAREERS) $('f-careers').append(careerRow({}, ex));
-      syncCareerAdd();
+      if (OB.d.careers.length < MAX_CAREERS) OB.d.careers.push({ period: '', org: '', role: '' });
+      renderCareers();
+      syncNext();
+      const rows = $('in-careers').querySelectorAll('.career');
+      if (rows.length) rows[rows.length - 1].querySelector('input').focus();
     });
-    $('logo-file').addEventListener('change', async (e) => {
+    $('in-logo').addEventListener('change', async (e) => {
       const file = e.target.files && e.target.files[0];
       e.target.value = '';
       if (!file) return;
-      try { F.logo = await processLogo(file); renderLogoPreview(); }
+      try { OB.d.logo = await processLogo(file); renderLogoSlot(); syncNext(); }
       catch (ex) { toast('이미지를 읽지 못했어요. PNG나 JPG 파일로 다시 올려 주세요.'); }
     });
-    $('logo-clear').addEventListener('click', () => { F.logo = null; renderLogoPreview(); });
+    $('logo-badge').addEventListener('click', () => {
+      if (OB.d.logo) { OB.d.logo = null; renderLogoSlot(); syncNext(); }
+      else $('in-logo').click();
+    });
 
-    const edit = () => { S.editing = true; route(); };
-    $('bar-profile').addEventListener('click', edit);
-    $('wait-edit').addEventListener('click', edit);
-    $('result-edit').addEventListener('click', edit);
-    $('brand').addEventListener('click', (e) => { if (location.hash !== '#admin') e.preventDefault(); });
-
+    document.querySelectorAll('.tabbar button').forEach((b) => b.addEventListener('click', () => goTab(b.dataset.tab)));
+    $('seg-in').addEventListener('click', () => { S.likesTab = 'in'; renderApp(); });
+    $('seg-out').addEventListener('click', () => { S.likesTab = 'out'; renderApp(); });
+    $('me-edit').addEventListener('click', () => { S.editing = true; route(); });
     $('btn-like').addEventListener('click', () => act('like'));
-    $('btn-pass').addEventListener('click', () => act('pass'));
+    $('btn-nope').addEventListener('click', () => act('pass'));
     $('btn-undo').addEventListener('click', undo);
-    $('more-btn').addEventListener('click', () => { S.continuing = true; route(); });
+    $('finish-go').addEventListener('click', () => { $('finish').hidden = true; S.likesTab = 'in'; goTab('likes'); });
+    $('finish-close').addEventListener('click', () => { $('finish').hidden = true; });
+    $('sheet').addEventListener('click', (e) => { if (e.target.closest('[data-close]')) closeSheet(); });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { closeSheet(); $('qr-full').hidden = true; }
-      if (S.view !== 'swipe' || !$('sheet').hidden) return;
+      if (e.key === 'Escape') { closeSheet(); $('qr-full').hidden = true; $('demo-menu').hidden = true; }
+      if (S.view !== 'app' || S.tab !== 'swipe' || !$('sheet').hidden || !$('finish').hidden) return;
       if (/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '')) return;
       if (e.key === 'ArrowRight') act('like');
       if (e.key === 'ArrowLeft') act('pass');
     });
-    $('sheet').addEventListener('click', (e) => { if (e.target.closest('[data-close]')) closeSheet(); });
 
     $('admin-login').addEventListener('submit', async (e) => {
       e.preventDefault();
       const pin = $('admin-pin').value.trim();
       if (!pin) return;
       const ok = await S.store.becomeAdmin(pin);
-      $('admin-error').textContent = 'PIN이 맞지 않아요.';
       $('admin-error').hidden = ok;
       if (ok) { S.admin = true; $('admin-pin').value = ''; render(); }
     });
@@ -849,7 +1078,6 @@
     });
     $('qr-close').addEventListener('click', () => { $('qr-full').hidden = true; });
     $('copy-url').addEventListener('click', () => {
-      const url = entryUrl();
       const fallback = () => {
         const range = document.createRange();
         range.selectNodeContents($('qr-url'));
@@ -858,14 +1086,17 @@
         sel.addRange(range);
         toast('링크를 선택했어요. 길게 눌러 복사하세요.');
       };
-      try {
-        navigator.clipboard.writeText(url).then(() => toast('링크를 복사했어요.'), fallback);
-      } catch (ex) { fallback(); }
+      try { navigator.clipboard.writeText(entryUrl()).then(() => toast('링크를 복사했어요.'), fallback); }
+      catch (ex) { fallback(); }
     });
 
-    $('demo-phase').addEventListener('click', () => {
-      const order = ['registration', 'swipe', 'ended'];
-      S.store.setPhase(order[(order.indexOf(S.phase) + 1) % order.length]);
+    $('demo-chip').addEventListener('click', () => { $('demo-menu').hidden = false; });
+    $('demo-close').addEventListener('click', () => { $('demo-menu').hidden = true; });
+    $('demo-menu').addEventListener('click', (e) => { if (e.target === $('demo-menu')) $('demo-menu').hidden = true; });
+    $('demo-admin').addEventListener('click', () => { $('demo-menu').hidden = true; });
+    $('demo-phase').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-phase]');
+      if (b) S.store.setPhase(b.dataset.phase);
     });
     $('demo-reset').addEventListener('click', () => {
       S.store.reset();
@@ -887,7 +1118,6 @@
         S.store = await ND.createFirebaseStore(C);
       } else {
         S.store = ND.createDemoStore(C);
-        $('demo-banner').hidden = false;
       }
     } catch (ex) {
       console.error(ex);
@@ -901,7 +1131,9 @@
     }
 
     S.store.watchSettings((s) => {
+      const prev = S.phase;
       S.phase = ['registration', 'swipe', 'ended'].includes(s.phase) ? s.phase : 'registration';
+      if (prev !== 'swipe' && S.phase === 'swipe') { S.tab = 'swipe'; S.renderedTop = null; }
       onData();
     });
     S.store.watchProfiles((list) => {

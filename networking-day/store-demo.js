@@ -32,19 +32,15 @@
       return () => map.get(pid).delete(cb);
     };
 
-    function hash32(s) {
-      let h = 2166136261;
-      for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
-      return h >>> 0;
-    }
-
-    // 예시 참가자 5명이 나를 골랐다고 가정
-    function seedInbox(pid) {
+    // 예시 참가자 5명이 나를 골랐다고 가정 (무작위, 처음 만들 때 한 번 정해 저장)
+    function seedInbox() {
       const now = Date.now();
-      return samples.map((p) => p.id)
-        .sort((a, b) => hash32('inbox|' + pid + a) - hash32('inbox|' + pid + b))
-        .slice(0, 5)
-        .map((id, k) => ({ id, at: now - k * 95000 }));
+      const ids = samples.map((p) => p.id);
+      for (let i = ids.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [ids[i], ids[j]] = [ids[j], ids[i]];
+      }
+      return ids.slice(0, 5).map((id, k) => ({ id, at: now - k * 95000 }));
     }
 
     return {
@@ -60,7 +56,7 @@
         st.users[pid] = Object.assign({}, data, { id: pid, done: false, createdAt: Date.now() });
         st.keys[hash] = pid;
         if (!st.owned.includes(pid)) st.owned.push(pid);
-        st.inbox[pid] = seedInbox(pid);
+        st.inbox[pid] = seedInbox();
         save();
         emitProfiles();
         return pid;
