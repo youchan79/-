@@ -1,20 +1,88 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# 오늘사주
 
-# Run and deploy your AI Studio app
+생년월일로 사주를 계산해 무료로 일부를 보여 주고, 구독하면 AI 전체 풀이와 상담을 여는 서비스다. 메타 광고로 판매해 실제 결제 매출 ÷ 광고비(ROAS)를 검증하는 MVP.
 
-This contains everything you need to run your app locally.
+## 흐름
 
-View your app in AI Studio: https://ai.studio/apps/21fca6a8-ad84-447b-80d0-41fed2d81ce4
+1. 랜딩에서 성별, 생년월일(양력/음력/윤달), 태어난 시간(모름 가능) 입력
+2. 무료 미리보기: 사주팔자, 오행 분포, 일간 설명. 규칙 기반이라 AI 비용 0원
+3. 전체 풀이 버튼 → 이메일 가입 → 토스페이먼츠 결제창
+4. 결제 확인 → 구독 시작 → AI 전체 풀이(8개 항목) 생성, AI 상담 열림
+5. 내 정보에서 해지/해지 취소, 사주 기록 확인
 
-## Run Locally
+| 메타 이벤트 | 시점 |
+|---|---|
+| PageView | 화면 이동 |
+| ViewContent | 무료 미리보기 표시 |
+| CompleteRegistration | 가입 (서버 전환 API도 같은 event_id로 전송) |
+| InitiateCheckout | 결제창 열기 직전 |
+| Purchase | 첫 결제 승인 (event_id = 주문번호, 서버 전환 API와 중복 제거) |
 
-**Prerequisites:**  Node.js
+## 로컬 실행
 
+```bash
+npm install
+cp .env.example .env   # 비워 둔 채로도 실행된다
+npm run dev            # http://localhost:3000
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+토스 키와 Gemini 키가 없으면 **가짜 결제와 가짜 풀이**로 동작한다. 결제 버튼을 누르면 결제창 없이 바로 성공 처리된다. 운영(`NODE_ENV=production`)에서는 키가 없으면 서버가 뜨지 않는다.
+
+- 관리자 화면: `/admin` (개발 환경 기본 키 `dev-admin`)
+- 타입 검사: `npm run lint`
+- 운영 빌드: `npm run build && npm start`
+
+## 결제 모드 (`BILLING_MODE`)
+
+| 값 | 내용 | 필요한 계약 |
+|---|---|---|
+| `auto` | 카드 등록 후 30일마다 자동결제. 서버가 1시간마다 만기 구독을 결제하고, 실패하면 하루 간격으로 3번까지 재시도 후 만료 | 토스 일반 카드결제 + **자동결제 추가 심사** |
+| `pass` | 30일 이용권 단건결제. 자동 갱신 없음, 기간 안에 다시 사면 이어서 연장 | 토스 일반 카드결제만 |
+
+토스 자동결제는 일반 결제 계약과 별도로 리스크 심사를 받아야 쓸 수 있다. 심사가 끝나기 전에는 `pass`로 광고를 시작하고, 승인되면 `auto`로 바꾼다. 이미 판매한 이용권은 그대로 유지된다.
+
+## 출시 전 할 일 (11/2 MVP 점검 기준)
+
+1. **사업자등록 → 통신판매업 신고 → 토스페이먼츠 가입과 심사.** 심사 때 사이트 하단 사업자 정보, 이용약관, 환불정책, 가격이 보여야 한다. `.env`의 `BIZ_*` 값을 채우면 하단과 약관에 들어간다.
+2. **토스 테스트 키로 결제 확인.** 개발자센터 > API 키에서 'API 개별 연동 키'(`test_ck_`, `test_sk_`)를 넣는다. 결제위젯 키(`gck`)가 아니다. 테스트 본인인증 번호는 `000000`.
+3. **Gemini API 키**를 넣고 풀이와 상담 품질을 직접 확인한다. 프롬프트는 `server/ai.ts`.
+4. **메타 픽셀.** `META_PIXEL_ID`를 넣고, 이벤트 관리자의 '이벤트 테스트'에서 테스트 결제 시 `Purchase`가 찍히는지 본다. 전환 API까지 쓰려면 `META_CAPI_TOKEN`, 테스트 중에는 `META_TEST_EVENT_CODE`도 넣는다.
+5. **배포.** SQLite 파일을 쓰므로 재시작해도 지워지지 않는 디스크가 필요하다. Railway(볼륨), Fly.io(볼륨), 일반 VPS 중 하나에 올리고 `DATA_DIR`을 그 디스크로 지정한다. Google AI Studio의 Cloud Run 배포는 재시작 때 DB가 사라지므로 쓰지 않는다.
+6. 운영 환경 변수: `NODE_ENV=production`, `APP_URL`, `SESSION_SECRET`, `ADMIN_KEY`, `GEMINI_API_KEY`, `TOSS_CLIENT_KEY`, `TOSS_SECRET_KEY` (없으면 서버가 시작되지 않는다).
+
+## 숫자 보는 곳
+
+`/admin`에서 일별로 방문, 미리보기, 가입, 결제 시작, 첫 결제, 갱신, 결제 실패, 실제 결제 매출, AI 원가를 본다. 최근 7일 광고비를 넣으면 실제 ROAS를 계산한다. 메타 광고 관리자의 ROAS가 아니라 이 화면의 매출을 기준으로 판단한다.
+
+AI 원가는 Gemini 응답의 토큰 수 × `.env`의 단가로 계산해 기록한다. 모델을 바꾸면 `AI_PRICE_*` 단가도 고친다. 개발 환경의 가짜 풀이 원가는 가정값이다.
+
+## 구조
+
+```
+server/
+  index.ts     API 라우트, 정적 파일, 갱신 스케줄러
+  config.ts    환경 변수
+  db.ts        SQLite 스키마 (node:sqlite, 별도 설치 없음)
+  auth.ts      이메일/비밀번호, 세션 쿠키
+  saju.ts      사주 계산(lunar-javascript), 무료 미리보기 문구
+  ai.ts        Gemini 전체 풀이(스트리밍 저장)와 상담, 원가 기록
+  billing.ts   토스 자동결제/단건결제, 갱신과 만료
+  meta.ts      메타 전환 API
+src/
+  pages/       랜딩, 사주 결과, 상담, 결제 결과, 내 정보, 약관, 관리자
+  lib/         API, 라우터, 픽셀, 토스 SDK, 마크다운 렌더러
+```
+
+## 사주 계산 기준
+
+- 한국 표준시와 서울 태양시 차이 30분을 뺀다. 1954-03-21 ~ 1961-08-09(동경 127.5도 표준시)는 빼지 않는다.
+- 1987, 1988년 서머타임 기간은 1시간을 더 뺀다. 그 이전 서머타임(1948~1960)은 보정하지 않는다.
+- 보정 후 23시부터는 다음 날 일주로 본다 (야자시/조자시 구분 없음).
+- 절기 시각과 음력은 라이브러리의 중국 기준을 따른다. 절기 경계 몇십 분 안이나 한중 음력이 다른 드문 날짜는 다른 만세력과 결과가 다를 수 있다.
+
+## 아직 없는 것
+
+- 비밀번호 재설정, 회원 탈퇴 (이메일 발송 수단이 필요하다. 당장은 고객센터 메일로 처리)
+- 환불 버튼 (토스 상점관리자에서 직접 취소)
+- 로그인 시도 횟수 제한
+- 카카오 로그인

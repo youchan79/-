@@ -1,24 +1,57 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
 @import "tailwindcss";
 
-@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css");
-
 @theme {
-  --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --font-serif: "Noto Serif KR", "Nanum Myeongjo", serif;
+
+  --color-bg: #f2f4f6;
+  --color-card: #ffffff;
+  --color-ink: #191f28;
+  --color-sub: #4e5968;
+  --color-muted: #6b7684;
+  --color-line: #e5e8eb;
+  --color-field: #f9fafb;
+  --color-primary: #3182f6;
+  --color-primary-press: #1b64da;
+  --color-primary-soft: #e8f3ff;
+  --color-danger: #e42939;
+
+  --color-wood: #1b7a4c;
+  --color-wood-soft: #e3f5eb;
+  --color-fire: #c9343a;
+  --color-fire-soft: #fdecec;
+  --color-earth: #8a6400;
+  --color-earth-soft: #fbf2d5;
+  --color-metal: #4e5968;
+  --color-metal-soft: #eceef1;
+  --color-water: #1b4fb8;
+  --color-water-soft: #e6eefc;
 }
 
-/* Custom styles for native mobile feel */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
-  background-color: #f1f3f5;
-  color: #191f28;
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-ink);
   font-family: var(--font-sans);
+  letter-spacing: -0.015em;
+  word-break: keep-all;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Hide scrollbars for layout elements */
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
+input,
+select,
+button,
+textarea {
+  font: inherit;
+  letter-spacing: inherit;
 }
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+
+.hanja {
+  font-family: var(--font-serif);
+  letter-spacing: 0;
 }
