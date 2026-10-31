@@ -1,344 +1,281 @@
 import crypto from 'node:crypto';
 import { config } from './config.ts';
-import { all, one, run, tx, nowIso, addDays, type Row } from './db.ts';
+import { all, one, run, tx, nowIso, addMonths, newId } from './db.ts';
+import { getSub, isPro } from './plan.ts';
 import type { User } from './auth.ts';
 
-const TOSS_API = 'https://api.tosspayments.com';
+/*
+ * 페이앱 연동
+ * - 월간: 정기결제(rebillRegist). 페이앱이 매달 결제하고 결제통보(feedbackurl)로 알려 준다.
+ * - 연간: 단건 결제요청(payrequest).
+ * - 결제 완료는 결제통보에서만 처리한다. 결제창에서 돌아온 것(returnurl)은 완료 근거가 아니다.
+ */
 
-export class PaymentError extends Error {
-  constructor(message: string, public code = 'PAYMENT_FAILED') {
-    super(message);
+const API = 'https://api.payapp.kr/oapi/v2';
+export type Plan = 'monthly' | 'yearly';
+
+export class PaymentError extends Error {}
+
+// 개발용 가짜 결제에서 쓰는 키. 실제 결제통보와 같은 검증 경로를 그대로 탄다.
+const MOCK = { userid: 'mock_seller', linkkey: 'mock_linkkey', linkval: 'mock_linkval', requestkey: 'mock_requestkey' };
+const keys = () => (config.paymentProvider === 'mock' ? MOCK : config.payapp);
+
+function kstStamp(d = new Date()) {
+  return new Date(d.getTime() + 9 * 3600_000).toISOString().replace(/[-T:]/g, '').slice(0, 14);
+}
+
+const sha256 = (s: string) => crypto.createHash('sha256').update(s).digest('hex');
+
+async function payappPost(params: Record<string, string>): Promise<Record<string, string>> {
+  const k = keys();
+  const requestdate = kstStamp();
+  const body = new URLSearchParams({
+    userid: k.userid,
+    linkkey: k.linkkey,
+    requestdate,
+    hash: sha256(k.userid + requestdate + k.requestkey),
+    ...params,
+  });
+  const res = await fetch(API, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' },
+    body,
+  });
+  const text = await res.text();
+  const out = Object.fromEntries(new URLSearchParams(text));
+  if (out.state !== '1') {
+    console.error('[payapp] 요청 실패', params.cmd, text);
+    throw new PaymentError(out.errorMessage || '결제 요청에 실패했어요. 잠시 후 다시 시도해 주세요.');
   }
+  return out;
 }
 
-function tossAuthHeader() {
-  return 'Basic ' + Buffer.from(config.toss.secretKey + ':').toString('base64');
+export function normalizePhone(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const d = v.replace(/\D/g, '');
+  return /^01[016789]\d{7,8}$/.test(d) ? d : null;
 }
 
-async function tossPost(path: string, body: unknown, idempotencyKey?: string): Promise<any> {
-  const headers: Record<string, string> = {
-    Authorization: tossAuthHeader(),
-    'Content-Type': 'application/json',
-  };
-  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
-  const res = await fetch(TOSS_API + path, { method: 'POST', headers, body: JSON.stringify(body) });
-  const json: any = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new PaymentError(json?.message || `결제 요청이 실패했습니다. (${res.status})`, json?.code || 'TOSS_ERROR');
-  }
-  return json;
-}
+export const planInfo = (plan: Plan) => config.plans[plan];
 
-function ensureProvider() {
-  if (config.paymentProvider === 'none') throw new PaymentError('결제 설정이 아직 완료되지 않았습니다.', 'NOT_CONFIGURED');
-}
+/* ---------- 결제 시작 ---------- */
 
-/* ---------- 토스 API (mock 모드에서는 가짜 응답) ---------- */
-
-async function issueBillingKey(authKey: string, customerKey: string): Promise<{ billingKey: string; cardLabel: string }> {
-  if (config.paymentProvider === 'mock') {
-    if (!authKey.startsWith('mock_')) throw new PaymentError('가짜 결제 모드입니다.');
-    return { billingKey: 'mock_bk_' + crypto.randomUUID(), cardLabel: '테스트카드 1234' };
-  }
-  const json = await tossPost('/v1/billing/authorizations/issue', { authKey, customerKey });
-  const num: string = json?.card?.number ?? '';
-  return { billingKey: json.billingKey, cardLabel: num ? `카드 ${num}` : '등록된 카드' };
-}
-
-async function chargeBillingKey(p: {
-  billingKey: string;
-  customerKey: string;
-  amount: number;
-  orderId: string;
-  email: string;
-}): Promise<any> {
-  if (config.paymentProvider === 'mock') {
-    return { status: 'DONE', paymentKey: 'mock_pk_' + crypto.randomUUID(), totalAmount: p.amount, approvedAt: nowIso() };
-  }
-  return tossPost(
-    `/v1/billing/${encodeURIComponent(p.billingKey)}`,
-    {
-      customerKey: p.customerKey,
-      amount: p.amount,
-      orderId: p.orderId,
-      orderName: config.plan.name,
-      customerEmail: p.email,
-    },
-    p.orderId,
-  );
-}
-
-async function confirmOneTime(paymentKey: string, orderId: string, amount: number): Promise<any> {
-  if (config.paymentProvider === 'mock') {
-    if (!paymentKey.startsWith('mock_')) throw new PaymentError('가짜 결제 모드입니다.');
-    return { status: 'DONE', paymentKey, totalAmount: amount, approvedAt: nowIso() };
-  }
-  return tossPost('/v1/payments/confirm', { paymentKey, orderId, amount }, orderId);
-}
-
-/* ---------- 구독 상태 ---------- */
-
-export function newOrderId() {
-  const d = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10).replace(/-/g, '');
-  return `ord_${d}_${crypto.randomBytes(9).toString('base64url')}`;
-}
-
-export function getSubscription(userId: string): Row | undefined {
-  return one('SELECT * FROM subscriptions WHERE user_id = ?', userId);
-}
-
-export function hasAccess(userId: string | undefined): boolean {
-  if (!userId) return false;
-  const s = getSubscription(userId);
-  if (!s) return false;
-  if (s.status === 'past_due') return true; // 재시도 기간에는 이용 가능
-  return s.status === 'active' && s.current_period_end > nowIso();
-}
-
-export function subscriptionView(userId: string) {
-  const s = getSubscription(userId);
-  if (!s) return null;
-  return {
-    mode: s.mode as 'auto' | 'pass',
-    status: s.status as string,
-    active: hasAccess(userId),
-    amount: s.amount as number,
-    cardLabel: s.card_label as string | null,
-    periodEnd: s.current_period_end as string,
-    cancelAtPeriodEnd: !!s.cancel_at_period_end,
-  };
-}
-
-function upsertActiveSubscription(p: {
-  userId: string;
-  mode: 'auto' | 'pass';
-  billingKey: string | null;
-  cardLabel: string | null;
-  amount: number;
-}) {
-  const now = nowIso();
-  const existing = getSubscription(p.userId);
-  if (existing) {
-    // 이용권 기간이 남아 있으면 그 끝에서 이어서 연장한다.
-    const base = p.mode === 'pass' && existing.status === 'active' && existing.current_period_end > now ? existing.current_period_end : now;
-    run(
-      `UPDATE subscriptions SET mode = ?, status = 'active', billing_key = ?, card_label = ?, amount = ?,
-        current_period_start = ?, current_period_end = ?, cancel_at_period_end = ?, retry_count = 0, next_retry_at = NULL, updated_at = ?
-       WHERE user_id = ?`,
-      p.mode,
-      p.billingKey,
-      p.cardLabel,
-      p.amount,
-      base,
-      addDays(base, config.plan.days),
-      p.mode === 'pass' ? 1 : 0,
-      now,
-      p.userId,
-    );
-  } else {
-    run(
-      `INSERT INTO subscriptions (id, user_id, mode, status, billing_key, card_label, amount, current_period_start, current_period_end,
-        cancel_at_period_end, retry_count, created_at, updated_at)
-       VALUES (?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
-      'sub_' + crypto.randomUUID(),
-      p.userId,
-      p.mode,
-      p.billingKey,
-      p.cardLabel,
-      p.amount,
-      now,
-      addDays(now, config.plan.days),
-      p.mode === 'pass' ? 1 : 0,
-      now,
-      now,
-    );
-  }
-}
-
-function insertPayment(orderId: string, userId: string, kind: 'first' | 'renewal' | 'pass', amount: number) {
+export async function startCheckout(p: { user: User; plan: Plan; phone: string; origin: string }) {
+  if (config.paymentProvider === 'none') throw new PaymentError('결제 설정이 아직 완료되지 않았어요.');
+  const { name, price } = planInfo(p.plan);
+  const orderId = newId('ord');
   run(
-    `INSERT INTO payments (order_id, user_id, kind, amount, status, provider, created_at) VALUES (?, ?, ?, ?, 'pending', ?, ?)`,
+    `INSERT INTO payments (order_id, user_id, plan, kind, amount, status, provider, created_at)
+     VALUES (?, ?, ?, 'first', ?, 'requested', ?, ?)`,
     orderId,
-    userId,
-    kind,
-    amount,
+    p.user.id,
+    p.plan,
+    price,
     config.paymentProvider,
     nowIso(),
   );
-}
+  run('UPDATE users SET phone = ? WHERE id = ?', p.phone, p.user.id);
 
-function markPaymentDone(orderId: string, payment: any) {
-  run(
-    `UPDATE payments SET status = 'done', payment_key = ?, approved_at = ?, raw_json = ? WHERE order_id = ?`,
-    payment.paymentKey ?? null,
-    payment.approvedAt ? new Date(payment.approvedAt).toISOString() : nowIso(),
-    JSON.stringify({ status: payment.status, method: payment.method, totalAmount: payment.totalAmount, card: payment.card ?? null }),
-    orderId,
-  );
-}
-
-function markPaymentFailed(orderId: string, error: string) {
-  run(`UPDATE payments SET status = 'failed', error = ? WHERE order_id = ?`, error.slice(0, 500), orderId);
-}
-
-/* ---------- 결제 흐름 ---------- */
-
-export interface ConfirmResult {
-  orderId: string;
-  amount: number;
-  firstTime: boolean;
-}
-
-export function checkoutParams(user: User, origin: string, readingId: string | null) {
-  ensureProvider();
-  const back = readingId ? `&r=${encodeURIComponent(readingId)}` : '';
-  const base = {
-    provider: config.paymentProvider,
-    mode: config.billingMode,
-    clientKey: config.toss.clientKey,
-    customerKey: user.customer_key,
-    customerEmail: user.email,
-    amount: config.plan.price,
-    orderName: config.plan.name,
-    successUrl: `${origin}/checkout/success?mode=${config.billingMode}${back}`,
-    failUrl: `${origin}/checkout/fail?mode=${config.billingMode}${back}`,
-  };
-  if (config.billingMode === 'pass') {
-    const orderId = newOrderId();
-    insertPayment(orderId, user.id, 'pass', config.plan.price);
-    return { ...base, orderId };
-  }
-  return { ...base, orderId: null };
-}
-
-export async function confirmAuto(user: User, authKey: string, customerKey: string): Promise<ConfirmResult> {
-  ensureProvider();
-  if (customerKey !== user.customer_key) throw new PaymentError('결제 정보가 계정과 맞지 않습니다.');
-
-  const existing = getSubscription(user.id);
-  if (existing && existing.mode === 'auto' && hasAccess(user.id) && !existing.cancel_at_period_end) {
-    const last = one("SELECT order_id, amount FROM payments WHERE user_id = ? AND status = 'done' ORDER BY approved_at DESC LIMIT 1", user.id);
-    return { orderId: last?.order_id ?? '', amount: last?.amount ?? 0, firstTime: false };
+  const returnurl = `${p.origin}/subscription?order=${orderId}`;
+  if (config.paymentProvider === 'mock') {
+    return { orderId, payurl: `${p.origin}/mock-payapp?order=${orderId}` };
   }
 
-  const { billingKey, cardLabel } = await issueBillingKey(authKey, customerKey);
-  const orderId = newOrderId();
-  const amount = config.plan.price;
-  insertPayment(orderId, user.id, 'first', amount);
-  try {
-    const payment = await chargeBillingKey({ billingKey, customerKey, amount, orderId, email: user.email });
-    if (payment.status !== 'DONE') throw new PaymentError(`결제가 완료되지 않았습니다. (${payment.status})`);
-    tx(() => {
-      markPaymentDone(orderId, payment);
-      upsertActiveSubscription({ userId: user.id, mode: 'auto', billingKey, cardLabel, amount });
+  const feedbackurl = `${config.appUrl || p.origin}/api/payapp/feedback`;
+  const common = { recvphone: p.phone, feedbackurl, var1: orderId, var2: p.user.id, smsuse: 'n', returnurl, recvemail: p.user.email };
+  if (p.plan === 'monthly') {
+    const kstDay = new Date(Date.now() + 9 * 3600_000).getUTCDate();
+    const expire = new Date(Date.now() + 5 * 365 * 86400_000).toISOString().slice(0, 10);
+    const out = await payappPost({
+      cmd: 'rebillRegist',
+      goodname: name,
+      goodprice: String(price),
+      rebillCycleType: 'Month',
+      rebillCycleMonth: String(kstDay > 28 ? 90 : kstDay), // 29~31일 가입은 매월 말일 결제
+      rebillExpire: expire,
+      openpaytype: 'card',
+      ...common,
     });
-    return { orderId, amount, firstTime: true };
-  } catch (e) {
-    markPaymentFailed(orderId, (e as Error).message);
-    throw e;
+    run('UPDATE payments SET rebill_no = ? WHERE order_id = ?', out.rebill_no, orderId);
+    return { orderId, payurl: out.payurl };
   }
+  const out = await payappPost({ cmd: 'payrequest', goodname: name, price: String(price), checkretry: 'y', ...common });
+  run('UPDATE payments SET mul_no = ? WHERE order_id = ?', out.mul_no, orderId);
+  return { orderId, payurl: out.payurl };
 }
 
-export async function confirmPass(user: User, paymentKey: string, orderId: string, amount: number): Promise<ConfirmResult> {
-  ensureProvider();
-  const p = one('SELECT * FROM payments WHERE order_id = ? AND user_id = ?', orderId, user.id);
-  if (!p) throw new PaymentError('주문을 찾을 수 없습니다.');
-  if (p.status === 'done') return { orderId, amount: p.amount, firstTime: false };
-  if (Number(amount) !== p.amount) throw new PaymentError('결제 금액이 주문과 다릅니다.');
-  try {
-    const payment = await confirmOneTime(paymentKey, orderId, p.amount);
-    if (payment.status !== 'DONE') throw new PaymentError(`결제가 완료되지 않았습니다. (${payment.status})`);
+/* ---------- 결제통보 ---------- */
+
+export interface FeedbackResult {
+  ok: boolean;
+  purchase?: { orderId: string; userId: string; amount: number; first: boolean };
+}
+
+/** 페이앱 결제통보 처리. 여러 번 와도 한 번만 반영된다. */
+export function handleFeedback(body: Record<string, string>): FeedbackResult {
+  const k = keys();
+  const validKeys = body.userid === k.userid && body.linkkey === k.linkkey && body.linkval === k.linkval;
+  const validHash = (body.hash || '').toLowerCase() === sha256(k.userid + (body.responsedate || '') + k.requestkey);
+  if (!validKeys || !validHash) {
+    console.error('[payapp] 결제통보 검증 실패', { userid: body.userid, mul_no: body.mul_no });
+    return { ok: false };
+  }
+  const state = Number(body.pay_state);
+  const orderId = body.var1;
+  const base = orderId ? one('SELECT * FROM payments WHERE order_id = ?', orderId) : undefined;
+  if (!base) {
+    console.error('[payapp] 주문 없음', orderId);
+    return { ok: true }; // 우리 주문이 아니면 재시도할 필요가 없다
+  }
+  const price = Number(body.price);
+  const mulNo = body.mul_no || null;
+
+  if (state === 4) {
+    if (price !== base.amount) {
+      console.error('[payapp] 금액 불일치', orderId, price, base.amount);
+      return { ok: false };
+    }
+    if (mulNo && one("SELECT 1 FROM payments WHERE mul_no = ? AND status = 'paid'", mulNo)) return { ok: true };
+    const first = base.status !== 'paid';
+    const payOrderId = first ? orderId : `${orderId}_${mulNo ?? Date.now()}`;
     tx(() => {
-      markPaymentDone(orderId, payment);
-      upsertActiveSubscription({ userId: user.id, mode: 'pass', billingKey: null, cardLabel: null, amount: p.amount });
-    });
-    return { orderId, amount: p.amount, firstTime: true };
-  } catch (e) {
-    markPaymentFailed(orderId, (e as Error).message);
-    throw e;
-  }
-}
-
-export function cancelSubscription(userId: string) {
-  run('UPDATE subscriptions SET cancel_at_period_end = 1, updated_at = ? WHERE user_id = ?', nowIso(), userId);
-}
-
-export function resumeSubscription(userId: string) {
-  const s = getSubscription(userId);
-  if (!s || s.mode !== 'auto' || !s.billing_key || !hasAccess(userId)) {
-    throw new PaymentError('다시 구독하려면 결제를 새로 진행해 주세요.');
-  }
-  run('UPDATE subscriptions SET cancel_at_period_end = 0, updated_at = ? WHERE user_id = ?', nowIso(), userId);
-}
-
-/* ---------- 정기결제 갱신 (토스는 스케줄을 대신 돌려주지 않는다) ---------- */
-
-let renewing = false;
-
-export async function runRenewals(): Promise<{ charged: number; failed: number; expired: number }> {
-  const result = { charged: 0, failed: 0, expired: 0 };
-  if (renewing || config.paymentProvider === 'none') return result;
-  renewing = true;
-  try {
-    const now = nowIso();
-    const due = all(
-      `SELECT s.*, u.email, u.customer_key FROM subscriptions s JOIN users u ON u.id = s.user_id
-       WHERE s.status IN ('active', 'past_due') AND s.current_period_end <= ?`,
-      now,
-    );
-    for (const s of due) {
-      if (s.mode !== 'auto' || s.cancel_at_period_end || !s.billing_key) {
-        run("UPDATE subscriptions SET status = 'expired', updated_at = ? WHERE id = ?", now, s.id);
-        result.expired++;
-        continue;
-      }
-      if (s.status === 'past_due' && s.next_retry_at && s.next_retry_at > now) continue;
-
-      const orderId = newOrderId();
-      insertPayment(orderId, s.user_id, 'renewal', s.amount);
-      try {
-        const payment = await chargeBillingKey({
-          billingKey: s.billing_key,
-          customerKey: s.customer_key,
-          amount: s.amount,
+      if (first) {
+        run(
+          "UPDATE payments SET status = 'paid', mul_no = ?, rebill_no = COALESCE(?, rebill_no), raw_json = ?, paid_at = ? WHERE order_id = ?",
+          mulNo,
+          body.rebill_no || null,
+          JSON.stringify(body),
+          nowIso(),
           orderId,
-          email: s.email,
-        });
-        if (payment.status !== 'DONE') throw new PaymentError(`결제 상태 ${payment.status}`);
-        const start = s.status === 'active' ? s.current_period_end : nowIso();
-        tx(() => {
-          markPaymentDone(orderId, payment);
-          run(
-            `UPDATE subscriptions SET status = 'active', current_period_start = ?, current_period_end = ?, retry_count = 0,
-              next_retry_at = NULL, updated_at = ? WHERE id = ?`,
-            start,
-            addDays(start, config.plan.days),
-            nowIso(),
-            s.id,
-          );
-        });
-        result.charged++;
-      } catch (e) {
-        markPaymentFailed(orderId, (e as Error).message);
-        const retries = s.retry_count + 1;
-        if (retries >= config.renewalMaxRetries) {
-          run("UPDATE subscriptions SET status = 'expired', retry_count = ?, updated_at = ? WHERE id = ?", retries, nowIso(), s.id);
-          result.expired++;
-        } else {
-          run(
-            "UPDATE subscriptions SET status = 'past_due', retry_count = ?, next_retry_at = ?, updated_at = ? WHERE id = ?",
-            retries,
-            addDays(nowIso(), 1),
-            nowIso(),
-            s.id,
-          );
-        }
-        result.failed++;
-        console.error('[renewal] 결제 실패', s.user_id, (e as Error).message);
+        );
+      } else {
+        run(
+          `INSERT INTO payments (order_id, user_id, plan, kind, amount, status, provider, mul_no, rebill_no, raw_json, created_at, paid_at)
+           VALUES (?, ?, ?, 'renewal', ?, 'paid', ?, ?, ?, ?, ?, ?)`,
+          payOrderId,
+          base.user_id,
+          base.plan,
+          price,
+          base.provider,
+          mulNo,
+          body.rebill_no || base.rebill_no,
+          JSON.stringify(body),
+          nowIso(),
+          nowIso(),
+        );
+      }
+      extendSubscription(base.user_id, base.plan, price, body.rebill_no || base.rebill_no || null);
+    });
+    return { ok: true, purchase: { orderId: payOrderId, userId: base.user_id, amount: price, first } };
+  }
+
+  if (state === 8 || state === 16 || state === 31 || state === 32) {
+    run("UPDATE payments SET status = 'canceled' WHERE order_id = ? AND status = 'requested'", orderId);
+    return { ok: true };
+  }
+
+  if (state === 9 || state === 64 || state === 70 || state === 71) {
+    // 승인 취소(환불). 취소된 결제가 지금 기간을 만든 결제면 Pro를 바로 끝낸다.
+    const target = mulNo ? one('SELECT * FROM payments WHERE mul_no = ?', mulNo) : base;
+    if (target && target.status === 'paid') {
+      run("UPDATE payments SET status = 'canceled' WHERE order_id = ?", target.order_id);
+      const latest = one("SELECT order_id FROM payments WHERE user_id = ? AND status IN ('paid','canceled') ORDER BY paid_at DESC LIMIT 1", target.user_id);
+      if (latest?.order_id === target.order_id) {
+        run("UPDATE subscriptions SET status = 'expired', current_period_end = ?, updated_at = ? WHERE user_id = ?", nowIso(), nowIso(), target.user_id);
       }
     }
-  } finally {
-    renewing = false;
+    return { ok: true };
   }
-  return result;
+  return { ok: true };
+}
+
+function extendSubscription(userId: string, plan: Plan, amount: number, rebillNo: string | null) {
+  const now = nowIso();
+  const s = getSub(userId);
+  const months = plan === 'yearly' ? 12 : 1;
+  const base = s && s.status !== 'expired' && s.current_period_end > now ? s.current_period_end : now;
+  const end = addMonths(base, months);
+  if (s) {
+    run(
+      `UPDATE subscriptions SET plan = ?, status = 'active', rebill_no = ?, amount = ?, current_period_end = ?,
+         cancel_at_period_end = 0, updated_at = ? WHERE user_id = ?`,
+      plan,
+      plan === 'monthly' ? rebillNo : null,
+      amount,
+      end,
+      now,
+      userId,
+    );
+  } else {
+    run(
+      `INSERT INTO subscriptions (user_id, plan, status, rebill_no, amount, current_period_end, created_at, updated_at)
+       VALUES (?, ?, 'active', ?, ?, ?, ?, ?)`,
+      userId,
+      plan,
+      plan === 'monthly' ? rebillNo : null,
+      amount,
+      end,
+      now,
+      now,
+    );
+  }
+}
+
+/* ---------- 해지 ---------- */
+
+export async function cancelSubscription(userId: string) {
+  const s = getSub(userId);
+  if (!s || !isPro(userId)) throw new PaymentError('이용 중인 구독이 없어요.');
+  if (s.plan === 'monthly' && s.rebill_no && config.paymentProvider === 'payapp') {
+    await payappPost({ cmd: 'rebillCancel', rebill_no: s.rebill_no });
+  }
+  run("UPDATE subscriptions SET status = 'canceled', cancel_at_period_end = 1, updated_at = ? WHERE user_id = ?", nowIso(), userId);
+}
+
+export function subscriptionView(userId: string) {
+  const s = getSub(userId);
+  return {
+    pro: isPro(userId),
+    plan: s?.plan ?? null,
+    status: s?.status ?? null,
+    amount: s?.amount ?? null,
+    periodEnd: s?.current_period_end ?? null,
+    canceled: !!s?.cancel_at_period_end,
+  };
+}
+
+export function orderStatus(userId: string, orderId: string) {
+  const p = one('SELECT order_id, plan, amount, status, kind FROM payments WHERE order_id = ? AND user_id = ?', orderId, userId);
+  return p ?? null;
+}
+
+/* ---------- 개발용 가짜 결제 ---------- */
+
+/** 가짜 결제창에서 '결제하기'를 누르면 실제 결제통보와 같은 형식으로 서명해 처리한다. */
+export function mockPay(orderId: string, opts: { renewal?: boolean } = {}): FeedbackResult {
+  if (config.paymentProvider !== 'mock') throw new PaymentError('가짜 결제는 개발 환경에서만 쓸 수 있어요.');
+  const p = one('SELECT * FROM payments WHERE order_id = ?', orderId);
+  if (!p) throw new PaymentError('주문을 찾을 수 없어요.');
+  const responsedate = kstStamp();
+  const mulNo = String(Date.now());
+  return handleFeedback({
+    userid: MOCK.userid,
+    linkkey: MOCK.linkkey,
+    linkval: MOCK.linkval,
+    responsedate,
+    hash: sha256(MOCK.userid + responsedate + MOCK.requestkey),
+    pay_state: '4',
+    price: String(p.amount),
+    var1: orderId,
+    var2: p.user_id,
+    mul_no: mulNo,
+    rebill_no: p.plan === 'monthly' ? p.rebill_no || `mock_rebill_${orderId}` : '',
+    pay_type: '1',
+    goodname: planInfo(p.plan).name,
+    ...(opts.renewal ? {} : {}),
+  });
+}
+
+export function lastOrderForUser(userId: string) {
+  return all("SELECT order_id FROM payments WHERE user_id = ? AND kind = 'first' AND status = 'paid' ORDER BY paid_at DESC LIMIT 1", userId)[0];
 }

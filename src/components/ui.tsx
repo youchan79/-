@@ -1,66 +1,45 @@
 import React, { useEffect } from 'react';
-import { Link } from '../lib/router.tsx';
+import { X } from 'lucide-react';
 import { useApp } from '../lib/app.tsx';
 
-export function Page({ children, bottomPad = false }: { children: React.ReactNode; bottomPad?: boolean }) {
-  return <div className={`mx-auto min-h-dvh w-full max-w-[480px] ${bottomPad ? 'pb-32' : 'pb-10'}`}>{children}</div>;
+export function Logo({ className = '' }: { className?: string }) {
+  return <span className={`select-none text-[24px] font-bold tracking-[-0.06em] ${className}`}>StudyAI</span>;
 }
 
-export function TopBar({ right }: { right?: React.ReactNode }) {
-  const { config, me } = useApp();
-  return (
-    <header className="sticky top-0 z-20 flex h-14 items-center justify-between bg-bg/95 px-4 backdrop-blur">
-      <Link to="/" className="text-[17px] font-bold tracking-tight text-ink">
-        {config?.serviceName ?? ''}
-      </Link>
-      {right ?? (
-        <Link to={me?.user ? '/me' : '/me?login=1'} className="rounded-full px-3 py-1.5 text-[14px] text-sub active:bg-black/5">
-          {me?.user ? '내 정보' : '로그인'}
-        </Link>
-      )}
-    </header>
-  );
-}
+type Variant = 'solid' | 'outline' | 'soft' | 'ghost';
 
-export function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-[22px] bg-card p-5 ${className}`}>{children}</section>;
-}
-
-export function CardTitle({ children, sub }: { children: React.ReactNode; sub?: React.ReactNode }) {
-  return (
-    <div className="mb-4">
-      <h2 className="text-[19px] font-bold tracking-tight text-ink">{children}</h2>
-      {sub && <p className="mt-1 text-[14px] text-muted">{sub}</p>}
-    </div>
-  );
-}
+const VARIANT: Record<Variant, string> = {
+  solid: 'bg-solid text-on-solid hover:opacity-90 disabled:opacity-40',
+  outline: 'border border-line bg-canvas text-ink hover:bg-soft disabled:opacity-40',
+  soft: 'bg-soft text-ink hover:bg-soft-2 disabled:opacity-40',
+  ghost: 'text-sub hover:bg-soft disabled:opacity-40',
+};
 
 export function Button({
   children,
-  onClick,
-  disabled,
-  variant = 'primary',
-  type = 'button',
+  variant = 'solid',
+  size = 'md',
   className = '',
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-  variant?: 'primary' | 'secondary' | 'ghost';
-  type?: 'button' | 'submit';
-  className?: string;
-}) {
-  const styles = {
-    primary: 'bg-primary text-white active:bg-primary-press disabled:bg-primary/40',
-    secondary: 'bg-primary-soft text-primary active:bg-[#d6e9ff] disabled:opacity-50',
-    ghost: 'bg-field text-sub active:bg-line disabled:opacity-50',
-  }[variant];
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: 'sm' | 'md' | 'lg' }) {
+  const s = { sm: 'h-9 px-4 text-[14px]', md: 'h-11 px-5 text-[15px]', lg: 'h-[52px] px-7 text-[16px]' }[size];
   return (
     <button
-      type={type}
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex h-14 w-full items-center justify-center whitespace-nowrap rounded-2xl text-[17px] font-semibold transition-colors ${styles} ${className}`}
+      type="button"
+      {...rest}
+      className={`inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-medium transition ${s} ${VARIANT[variant]} ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function IconButton({ children, className = '', ...rest }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      {...rest}
+      className={`inline-flex h-9 w-9 items-center justify-center rounded-full text-sub transition hover:bg-soft hover:text-ink disabled:opacity-30 ${className}`}
     >
       {children}
     </button>
@@ -71,59 +50,75 @@ export function Spinner({ className = '' }: { className?: string }) {
   return <span className={`inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-r-transparent ${className}`} />;
 }
 
-export function BottomCta({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-bg via-bg to-bg/0 pt-6">
-      <div className="mx-auto w-full max-w-[480px] px-4 pb-[max(16px,env(safe-area-inset-bottom))]">{children}</div>
-    </div>
-  );
+export function NewBadge() {
+  return <span className="rounded-full border border-blue/30 bg-blue-soft px-2 py-[1px] text-[11px] font-semibold text-blue">NEW</span>;
 }
 
-export function Sheet({ open, onClose, children }: { open: boolean; onClose: () => void; children: React.ReactNode }) {
+export function Modal({
+  open,
+  onClose,
+  children,
+  width = 440,
+  className = '',
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  width?: number;
+  className?: string;
+}) {
   useEffect(() => {
     if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
+      window.removeEventListener('keydown', onKey);
       document.body.style.overflow = prev;
     };
-  }, [open]);
+  }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onMouseDown={onClose}>
       <div
-        className="w-full max-w-[480px] rounded-t-[26px] bg-card px-5 pb-[max(20px,env(safe-area-inset-bottom))] pt-6"
-        onClick={(e) => e.stopPropagation()}
+        className={`relative max-h-[92dvh] w-full overflow-y-auto rounded-t-[24px] bg-canvas p-6 shadow-xl sm:rounded-[24px] ${className}`}
+        style={{ maxWidth: width }}
+        onMouseDown={(e) => e.stopPropagation()}
       >
+        <IconButton onClick={onClose} className="absolute right-3 top-3" aria-label="닫기">
+          <X size={20} />
+        </IconButton>
         {children}
       </div>
     </div>
   );
 }
 
-export function Footer() {
-  const { config } = useApp();
-  if (!config) return null;
-  const b = config.business;
+export function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+  className = '',
+}: {
+  value: T;
+  options: Array<[T, React.ReactNode]>;
+  onChange: (v: T) => void;
+  className?: string;
+}) {
   return (
-    <footer className="mt-10 px-5 text-[12px] leading-[1.7] text-muted">
-      <div className="mb-3 flex gap-4 text-[13px] text-sub">
-        <Link to="/terms">이용약관</Link>
-        <Link to="/privacy" className="font-semibold">
-          개인정보처리방침
-        </Link>
-        <Link to="/refund">환불정책</Link>
-      </div>
-      <p>
-        {b.name} | 대표 {b.owner} | 사업자등록번호 {b.regNo}
-      </p>
-      <p>통신판매업 신고번호 {b.mailOrderNo}</p>
-      <p>{b.address}</p>
-      <p>
-        고객센터 {b.phone} | {b.email}
-      </p>
-      <p className="mt-2">사주 풀이는 재미와 참고를 위한 콘텐츠이며, 중요한 결정은 전문가와 상의하세요.</p>
-    </footer>
+    <div className={`inline-flex rounded-full bg-soft p-1 ${className}`}>
+      {options.map(([v, label]) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => onChange(v)}
+          className={`h-8 rounded-full px-4 text-[14px] transition ${value === v ? 'bg-canvas font-medium text-ink shadow-card' : 'text-muted hover:text-ink'}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -131,8 +126,28 @@ export function Toast() {
   const { toast } = useApp();
   if (!toast) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex justify-center px-4">
-      <div className="max-w-[440px] rounded-2xl bg-ink/90 px-4 py-3 text-[15px] text-white">{toast}</div>
+    <div className="pointer-events-none fixed inset-x-0 top-5 z-[70] flex justify-center px-4">
+      <div className="max-w-[460px] rounded-full bg-solid px-5 py-3 text-[14px] text-on-solid shadow-lg">{toast}</div>
+    </div>
+  );
+}
+
+export function EmptyState({ icon, title, sub, children }: { icon?: React.ReactNode; title: string; sub?: string; children?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+      {icon && <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-soft text-sub">{icon}</div>}
+      <div className="text-[17px] font-semibold">{title}</div>
+      {sub && <p className="mt-1.5 max-w-[420px] text-[14px] leading-[1.6] text-muted">{sub}</p>}
+      {children && <div className="mt-5">{children}</div>}
+    </div>
+  );
+}
+
+export function Loading({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-24 text-[15px] text-muted">
+      <Spinner className="h-6 w-6 text-ink" />
+      {label}
     </div>
   );
 }

@@ -3,15 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#f2f4f6" />
-    <title>오늘사주 | AI 사주 풀이</title>
-    <meta name="description" content="생년월일만 넣으면 사주 전체 풀이와 AI 상담을 받아볼 수 있어요." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@600&display=swap&text=%E7%94%B2%E4%B9%99%E4%B8%99%E4%B8%81%E6%88%8A%E5%B7%B1%E5%BA%9A%E8%BE%9B%E5%A3%AC%E7%99%B8%E5%AD%90%E4%B8%91%E5%AF%85%E5%8D%AF%E8%BE%B0%E5%B7%B3%E5%8D%88%E6%9C%AA%E7%94%B3%E9%85%89%E6%88%8C%E4%BA%A5"
-    />
+    <meta name="theme-color" content="#ffffff" />
+    <title>스터디AI - PDF·유튜브·강의 녹음 요약과 퀴즈</title>
+    <meta name="description" content="강의 자료, 유튜브, 녹음을 올리면 AI가 요약·퀴즈·플래시카드·마인드맵으로 정리해 줘요." />
+    <script>
+      // 첫 화면이 깜빡이지 않게 저장된 테마를 먼저 적용한다
+      try {
+        var t = localStorage.getItem('theme') || 'system';
+        var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

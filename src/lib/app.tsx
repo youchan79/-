@@ -1,10 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { api, ApiError, type AppConfig, type Me } from './api.ts';
-import { initPixel, track } from './pixel.ts';
-import { openCheckout, type CheckoutParams } from './toss.ts';
+import { api, type AppConfig, type Me } from './api.ts';
+import { initPixel } from './pixel.ts';
 
-interface AuthRequest {
-  mode: 'signup' | 'login';
+type Theme = 'system' | 'light' | 'dark';
+
+interface LoginRequest {
+  mode: 'login' | 'signup';
   onDone?: () => void;
 }
 
@@ -12,11 +13,15 @@ interface AppState {
   config: AppConfig | null;
   me: Me | null;
   refreshMe: () => Promise<Me>;
-  auth: AuthRequest | null;
-  openAuth: (req: AuthRequest) => void;
-  closeAuth: () => void;
-  startCheckout: (readingId?: string) => Promise<void>;
-  checkoutBusy: boolean;
+  setMe: (m: Me) => void;
+  login: LoginRequest | null;
+  openLogin: (req?: Partial<LoginRequest>) => void;
+  closeLogin: () => void;
+  upgrade: string | null;
+  openUpgrade: (message: string) => void;
+  closeUpgrade: () => void;
+  theme: Theme;
+  setTheme: (t: Theme) => void;
   toast: string | null;
   showToast: (msg: string) => void;
 }
@@ -29,15 +34,29 @@ export function useApp() {
   return v;
 }
 
+function readTheme(): Theme {
+  try {
+    const t = localStorage.getItem('theme');
+    if (t === 'light' || t === 'dark' || t === 'system') return t;
+  } catch {
+    /* 저장소를 못 쓰는 환경 */
+  }
+  return 'system';
+}
+
+function applyTheme(t: Theme) {
+  const dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [me, setMe] = useState<Me | null>(null);
-  const [auth, setAuth] = useState<AuthRequest | null>(null);
+  const [login, setLogin] = useState<LoginRequest | null>(null);
+  const [upgrade, setUpgrade] = useState<string | null>(null);
+  const [theme, setThemeState] = useState<Theme>(readTheme);
   const [toast, setToast] = useState<string | null>(null);
-  const [checkoutBusy, setCheckoutBusy] = useState(false);
   const toastTimer = useRef<number>(undefined);
-  const meRef = useRef<Me | null>(null);
-  meRef.current = me;
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -47,50 +66,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshMe = useCallback(async () => {
     const m = await api<Me>('/api/me');
-    meRef.current = m;
     setMe(m);
     return m;
   }, []);
+
+  useEffect(() => {
+    applyTheme(theme);
+    if (theme !== 'system') return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const fn = () => applyTheme('system');
+    mq.addEventListener('change', fn);
+    return () => mq.removeEventListener('change', fn);
+  }, [theme]);
 
   useEffect(() => {
     api<AppConfig>('/api/config').then((c) => {
       setConfig(c);
       initPixel(c.pixelId);
     });
-    refreshMe().catch(() => setMe({ user: null, subscription: null }));
+    refreshMe().catch(() => setMe({ user: null, sub: null, usage: null, settings: {} }));
     try {
       if (!sessionStorage.getItem('visit')) {
         sessionStorage.setItem('visit', '1');
         void api('/api/track', { name: 'visit' }).catch(() => {});
       }
     } catch {
-      /* 저장소를 못 쓰는 브라우저 */
+      /* 무시 */
     }
   }, [refreshMe]);
 
-  const startCheckout = useCallback(
-    async (readingId?: string) => {
-      if (!meRef.current?.user) {
-        setAuth({ mode: 'signup', onDone: () => void startCheckout(readingId) });
-        return;
-      }
-      setCheckoutBusy(true);
-      try {
-        const params = await api<CheckoutParams>('/api/checkout/start', { readingId });
-        track('InitiateCheckout', { value: params.amount, currency: 'KRW', content_name: params.orderName });
-        await openCheckout(params);
-      } catch (e: any) {
-        if (e instanceof ApiError && e.status === 401) {
-          setAuth({ mode: 'signup', onDone: () => void startCheckout(readingId) });
-        } else if (e?.code !== 'USER_CANCEL') {
-          showToast(e?.message || '결제를 시작하지 못했습니다.');
-        }
-      } finally {
-        setCheckoutBusy(false);
-      }
-    },
-    [showToast],
-  );
+  const setTheme = useCallback((t: Theme) => {
+    setThemeState(t);
+    try {
+      localStorage.setItem('theme', t);
+    } catch {
+      /* 무시 */
+    }
+  }, []);
 
   return (
     <Ctx.Provider
@@ -98,16 +110,32 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         config,
         me,
         refreshMe,
-        auth,
-        openAuth: setAuth,
-        closeAuth: () => setAuth(null),
-        startCheckout,
-        checkoutBusy,
+        setMe,
+        login,
+        openLogin: (req) => setLogin({ mode: req?.mode ?? 'login', onDone: req?.onDone }),
+        closeLogin: () => setLogin(null),
+        upgrade,
+        openUpgrade: setUpgrade,
+        closeUpgrade: () => setUpgrade(null),
+        theme,
+        setTheme,
         toast,
         showToast,
       }}
     >
       {children}
     </Ctx.Provider>
+  );
+}
+
+/** 로그인이 필요한 동작을 감싼다. 로그인돼 있으면 바로, 아니면 로그인 후 실행한다. */
+export function useRequireLogin() {
+  const { me, openLogin } = useApp();
+  return useCallback(
+    (fn: () => void) => {
+      if (me?.user) fn();
+      else openLogin({ mode: 'signup', onDone: fn });
+    },
+    [me, openLogin],
   );
 }

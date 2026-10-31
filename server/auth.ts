@@ -10,7 +10,7 @@ const SESSION_DAYS = 60;
 export interface User {
   id: string;
   email: string;
-  customer_key: string;
+  phone: string | null;
   created_at: string;
 }
 
@@ -103,7 +103,7 @@ export function attachIdentity(req: Request, res: Response, next: NextFunction) 
   req.anonId = anonId;
   const userId = readSession(req);
   if (userId) {
-    const user = one<User>('SELECT id, email, customer_key, created_at FROM users WHERE id = ?', userId);
+    const user = one<User>('SELECT id, email, phone, created_at FROM users WHERE id = ?', userId);
     if (user) req.user = user;
   }
   next();
@@ -118,26 +118,15 @@ export function requireUser(req: Request, res: Response, next: NextFunction) {
 }
 
 export function createUser(email: string, password: string): User {
-  const user: User = {
-    id: 'usr_' + crypto.randomUUID(),
-    email,
-    customer_key: 'cus_' + crypto.randomUUID(),
-    created_at: nowIso(),
-  };
+  const user: User = { id: 'usr_' + crypto.randomUUID(), email, phone: null, created_at: nowIso() };
   run(
-    'INSERT INTO users (id, email, password_hash, customer_key, created_at) VALUES (?, ?, ?, ?, ?)',
+    'INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)',
     user.id,
     user.email,
     hashPassword(password),
-    user.customer_key,
     user.created_at,
   );
   return user;
-}
-
-/** 로그인 전에 만든 사주 결과를 계정에 연결한다. */
-export function claimAnonReadings(anonId: string, userId: string) {
-  run('UPDATE readings SET user_id = ? WHERE anon_id = ? AND user_id IS NULL', userId, anonId);
 }
 
 export function normalizeEmail(email: unknown): string | null {

@@ -1,0 +1,273 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Columns2, FileText, Loader2, PanelLeftOpen } from 'lucide-react';
+import { api, type DocDetail as Doc, type MindNode } from '../lib/api.ts';
+import { useApp } from '../lib/app.tsx';
+import { useMaterial, usePoll } from '../lib/hooks.ts';
+import { navigate } from '../lib/router.tsx';
+import { AppShell } from '../components/AppShell.tsx';
+import { ChatView } from '../components/ChatView.tsx';
+import { MindMap } from '../components/MindMap.tsx';
+import { Button, IconButton, Loading, Modal } from '../components/ui.tsx';
+import { SourcePane, type SourceHandle } from './doc/SourcePane.tsx';
+import { ConceptsTab, Generating, MaterialError, MemoTab, MemorizeTab, SummaryTab } from './doc/tabs.tsx';
+import { FlashcardsTab, QuizTab } from './doc/sets.tsx';
+
+const TABS = [
+  ['summary', '요약'],
+  ['quiz', '퀴즈'],
+  ['flashcards', '플래시카드'],
+  ['mindmap', '마인드맵'],
+  ['memorize', '암기'],
+  ['concepts', '개념'],
+  ['memo', '메모'],
+  ['tutor', 'AI 튜터'],
+] as const;
+type Tab = (typeof TABS)[number][0];
+
+function MindmapTab({ doc }: { doc: Doc }) {
+  const m = useMaterial<{ root: MindNode }>(doc.id, 'mindmap');
+  if (m.status === 'error') return <MaterialError message={m.error} />;
+  if (!m.data) return <Generating label="AI가 마인드맵을 그리고 있어요" />;
+  return <MindMap root={m.data.root} />;
+}
+
+function TutorTab({ doc, onRef }: { doc: Doc; onRef: (r: string) => void }) {
+  const { me, openLogin } = useApp();
+  const [chatId, setChatId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!me?.user) return;
+    api<{ id: string }>(`/api/docs/${doc.id}/chat`).then((r) => setChatId(r.id));
+  }, [doc.id, me?.user]);
+  return (
+    <ChatView
+      key={chatId ?? 'none'}
+      chatId={chatId}
+      compact
+      onRef={onRef}
+      emptyTitle="이 자료에 대해 물어보세요"
+      suggestions={['핵심만 3줄로 정리해줘', '시험에 나올 만한 부분 알려줘', '어려운 개념 쉽게 설명해줘']}
+      ensureChat={async () => {
+        if (!me?.user) {
+          openLogin({ mode: 'signup' });
+          return null;
+        }
+        const r = await api<{ id: string }>(`/api/docs/${doc.id}/chat`);
+        setChatId(r.id);
+        return r.id;
+      }}
+    />
+  );
+}
+
+function Processing({ doc }: { doc: Doc }) {
+  const steps =
+    doc.kind === 'youtube'
+      ? ['영상 내용을 받아 적는 중', '핵심 내용을 정리하는 중', '요약을 만드는 중']
+      : doc.kind === 'audio'
+        ? ['녹음을 받아 적는 중', '강의 흐름을 정리하는 중', '요약을 만드는 중']
+        : ['자료를 읽는 중', '핵심 개념을 찾는 중', '요약을 만드는 중'];
+  const [step, setStep] = useState(0);
+  useEffect(() => {
+    const t = window.setInterval(() => setStep((s) => Math.min(steps.length - 1, s + 1)), 6000);
+    return () => window.clearInterval(t);
+  }, [steps.length]);
+  return (
+    <div className="mx-auto max-w-[420px] py-20">
+      <div className="text-[22px] font-semibold tracking-tight">AI가 자료를 정리하고 있어요</div>
+      <p className="mt-2 text-[14px] text-muted">페이지가 많거나 영상이 길면 1~2분 걸릴 수 있어요. 다른 화면으로 가도 계속 진행돼요.</p>
+      <div className="mt-8 space-y-4">
+        {steps.map((s, i) => (
+          <div key={s} className={`flex items-center gap-3 text-[15px] ${i <= step ? 'text-ink' : 'text-muted'}`}>
+            {i < step ? (
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-solid text-[11px] text-on-solid">✓</span>
+            ) : i === step ? (
+              <Loader2 size={20} className="animate-spin" />
+            ) : (
+              <span className="h-5 w-5 rounded-full border border-line" />
+            )}
+            {s}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function useIsDesktop() {
+  const q = '(min-width: 1024px)';
+  const [v, setV] = useState(() => window.matchMedia(q).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(q);
+    const fn = () => setV(mq.matches);
+    mq.addEventListener('change', fn);
+    return () => mq.removeEventListener('change', fn);
+  }, []);
+  return v;
+}
+
+export default function DocDetail({ id, search }: { id: string; search: string }) {
+  const { me, openLogin, showToast } = useApp();
+  const desktop = useIsDesktop();
+  const [doc, setDoc] = useState<Doc | null>(null);
+  const [error, setError] = useState('');
+  const initialTab = (new URLSearchParams(search).get('tab') as Tab) || 'summary';
+  const [tab, setTab] = useState<Tab>(TABS.some(([t]) => t === initialTab) ? initialTab : 'summary');
+  const [showSource, setShowSource] = useState(true);
+  const [mobileSource, setMobileSource] = useState(false);
+  const [focus, setFocus] = useState<{ kind: 'quiz' | 'flashcards'; name: string; n: number } | null>(null);
+  const source = useRef<SourceHandle>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setDoc(await api<Doc>(`/api/docs/${id}`));
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    void load();
+  }, [load, me?.user?.email]);
+  usePoll(() => void load(), doc?.status === 'processing', 2500);
+
+  const selectTab = (t: Tab) => {
+    setTab(t);
+    history.replaceState(null, '', `/doc/${id}${t === 'summary' ? '' : `?tab=${t}`}`);
+  };
+
+  const onRef = (r: string) => {
+    if (!r) return;
+    if (!desktop) setMobileSource(true);
+    else setShowSource(true);
+    window.setTimeout(() => source.current?.goTo(r), 120);
+  };
+
+  if (error) {
+    return (
+      <AppShell title="">
+        <div className="py-24 text-center">
+          <p className="text-[16px] text-sub">{error}</p>
+          <Button className="mt-5" onClick={() => navigate('/home')}>
+            문서로 돌아가기
+          </Button>
+        </div>
+      </AppShell>
+    );
+  }
+  if (!doc) {
+    return (
+      <AppShell bare forceCollapsed>
+        <Loading label="문서를 여는 중" />
+      </AppShell>
+    );
+  }
+
+  const ready = doc.status === 'ready';
+
+  return (
+    <AppShell bare forceCollapsed>
+      <div className="flex h-full flex-col">
+        <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-3 pl-14 md:pl-3">
+          <IconButton onClick={() => navigate('/home')} aria-label="뒤로">
+            <ArrowLeft size={19} />
+          </IconButton>
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
+            {doc.isSample && <span className="shrink-0 rounded-full border border-line px-2 py-0.5 text-[12px] text-muted">샘플</span>}
+            <span className="truncate text-[15px] font-medium">{doc.title}</span>
+          </div>
+          {me && !me.user && (
+            <Button size="sm" onClick={() => openLogin()}>
+              로그인
+            </Button>
+          )}
+          {desktop ? (
+            <IconButton onClick={() => setShowSource((s) => !s)} aria-label="원문 패널">
+              <Columns2 size={18} />
+            </IconButton>
+          ) : (
+            <IconButton onClick={() => setMobileSource(true)} aria-label="원문 보기">
+              <FileText size={18} />
+            </IconButton>
+          )}
+        </header>
+
+        <div className="flex min-h-0 flex-1">
+          {desktop && showSource && (
+            <section className="hidden w-[42%] min-w-[360px] max-w-[640px] shrink-0 border-r border-line lg:block">
+              {doc.status === 'error' ? null : <SourcePane ref={source} doc={doc} onCollapse={() => setShowSource(false)} />}
+            </section>
+          )}
+          {desktop && !showSource && (
+            <button
+              type="button"
+              onClick={() => setShowSource(true)}
+              className="hidden w-11 shrink-0 items-start justify-center border-r border-line pt-3 text-sub hover:text-ink lg:flex"
+              aria-label="원문 펼치기"
+            >
+              <PanelLeftOpen size={18} />
+            </button>
+          )}
+
+          <section className="flex min-w-0 flex-1 flex-col">
+            <div className="no-scrollbar flex shrink-0 justify-start overflow-x-auto px-3 py-2.5 md:justify-center">
+              <div className="flex gap-0.5">
+                {TABS.map(([t, label]) => (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={!ready}
+                    onClick={() => selectTab(t)}
+                    className={`h-9 shrink-0 whitespace-nowrap rounded-full px-3.5 text-[14px] transition disabled:opacity-40 ${tab === t ? 'bg-solid font-medium text-on-solid' : 'text-sub hover:text-ink'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className={`min-h-0 flex-1 ${tab === 'tutor' || tab === 'mindmap' ? 'flex flex-col' : 'overflow-y-auto'}`}>
+              {doc.status === 'processing' ? (
+                <Processing doc={doc} />
+              ) : doc.status === 'error' ? (
+                <div className="py-24 text-center">
+                  <p className="text-[16px] text-sub">{doc.error || '자료를 처리하지 못했어요.'}</p>
+                  <Button className="mt-5" onClick={() => navigate('/add-content')}>
+                    다시 올리기
+                  </Button>
+                </div>
+              ) : tab === 'tutor' ? (
+                <TutorTab doc={doc} onRef={onRef} />
+              ) : tab === 'mindmap' ? (
+                <MindmapTab doc={doc} />
+              ) : (
+                <div className={`mx-auto w-full px-5 pt-4 md:px-10 ${tab === 'memo' ? 'h-full max-w-[900px]' : 'max-w-[860px]'}`}>
+                  {tab === 'summary' && <SummaryTab doc={doc} onRef={onRef} />}
+                  {tab === 'quiz' && <QuizTab doc={doc} onRef={onRef} focusRequest={focus?.kind === 'quiz' ? `${focus.name}` : null} key={`q${focus?.kind === 'quiz' ? focus.n : 0}`} />}
+                  {tab === 'flashcards' && (
+                    <FlashcardsTab doc={doc} onRef={onRef} focusRequest={focus?.kind === 'flashcards' ? focus.name : null} key={`f${focus?.kind === 'flashcards' ? focus.n : 0}`} />
+                  )}
+                  {tab === 'memorize' && <MemorizeTab doc={doc} onRef={onRef} />}
+                  {tab === 'concepts' && (
+                    <ConceptsTab
+                      doc={doc}
+                      onRef={onRef}
+                      onMakeSet={(kind, name) => {
+                        if (doc.readOnly) return showToast('샘플 문서에는 새로 만들 수 없어요. 내 자료를 올려 보세요.');
+                        setFocus((f) => ({ kind, name, n: (f?.n ?? 0) + 1 }));
+                        selectTab(kind);
+                      }}
+                    />
+                  )}
+                  {tab === 'memo' && <MemoTab doc={doc} />}
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <Modal open={!desktop && mobileSource} onClose={() => setMobileSource(false)} width={720} className="!h-[88dvh] !p-0">
+        <div className="h-full pt-10">{ready || doc.kind === 'pdf' ? <SourcePane ref={source} doc={doc} /> : null}</div>
+      </Modal>
+    </AppShell>
+  );
+}

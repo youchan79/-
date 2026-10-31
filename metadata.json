@@ -1,6 +1,6 @@
 {
-  "name": "오늘사주",
-  "description": "생년월일로 사주를 계산하고 AI 전체 풀이와 상담을 월 구독으로 제공하는 서비스",
+  "name": "스터디AI",
+  "description": "강의 자료를 AI로 요약, 퀴즈, 플래시카드, 마인드맵으로 정리하는 학습 서비스 (레퍼런스 데모)",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

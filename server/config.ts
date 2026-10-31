@@ -15,8 +15,14 @@ function num(name: string, fallback: number): number {
 
 const isProd = process.env.NODE_ENV === 'production';
 
-const tossClientKey = str('TOSS_CLIENT_KEY');
-const tossSecretKey = str('TOSS_SECRET_KEY');
+const payapp = {
+  userid: str('PAYAPP_USERID'),
+  linkkey: str('PAYAPP_LINKKEY'),
+  linkval: str('PAYAPP_LINKVAL'),
+  // 판매자 사이트 > 설정 > 연동 정보의 '결제 KEY'. API 요청 해시와 결제통보 해시에 쓴다.
+  requestkey: str('PAYAPP_REQUESTKEY'),
+  shopname: str('PAYAPP_SHOPNAME', str('SERVICE_NAME', '스터디AI')),
+};
 
 export const config = {
   isProd,
@@ -25,36 +31,35 @@ export const config = {
   dataDir: path.resolve(str('DATA_DIR', './data')),
   sessionSecret: str('SESSION_SECRET', isProd ? '' : 'dev-session-secret-change-me'),
   adminKey: str('ADMIN_KEY', isProd ? '' : 'dev-admin'),
-  cronSecret: str('CRON_SECRET'),
+  serviceName: str('SERVICE_NAME', '스터디AI'),
 
-  plan: {
-    name: str('PLAN_NAME', 'AI 사주 월 구독'),
-    price: num('PLAN_PRICE', 9900),
-    days: num('PLAN_DAYS', 30),
-    chatDailyLimit: num('CHAT_DAILY_LIMIT', 20),
-    reportMonthlyLimit: num('REPORT_MONTHLY_LIMIT', 10),
+  plans: {
+    monthly: { name: str('PLAN_MONTHLY_NAME', '스터디AI Pro 월간'), price: num('PLAN_MONTHLY_PRICE', 9900) },
+    yearly: { name: str('PLAN_YEARLY_NAME', '스터디AI Pro 연간'), price: num('PLAN_YEARLY_PRICE', 82800) },
   },
 
-  // auto: 카드 등록 후 매월 자동결제 (토스 자동결제 추가 계약 필요)
-  // pass: 30일 이용권 단건결제 (일반 카드결제 계약만으로 가능, 자동 갱신 없음)
-  billingMode: (str('BILLING_MODE', 'auto') === 'pass' ? 'pass' : 'auto') as 'auto' | 'pass',
-  renewalIntervalMin: num('RENEWAL_INTERVAL_MIN', 60),
-  renewalMaxRetries: num('RENEWAL_MAX_RETRIES', 3),
-
-  toss: {
-    clientKey: tossClientKey,
-    secretKey: tossSecretKey,
+  free: {
+    weeklyFiles: num('FREE_WEEKLY_FILES', 2), // PDF, PPT, Word, 이미지
+    weeklyYoutube: num('FREE_WEEKLY_YOUTUBE', 2),
+    dailyTutor: num('FREE_DAILY_TUTOR', 10),
+    weeklyExams: num('FREE_WEEKLY_EXAMS', 1),
+    maxFileMb: num('FREE_MAX_FILE_MB', 50),
   },
-  // 토스 키가 없으면 개발 환경에서만 가짜 결제로 흐름을 테스트한다.
-  paymentProvider: (tossClientKey && tossSecretKey ? 'toss' : isProd ? 'none' : 'mock') as
-    | 'toss'
-    | 'mock'
-    | 'none',
+  pro: {
+    maxFileMb: num('PRO_MAX_FILE_MB', 1024),
+  },
+
+  payapp,
+  // 페이앱 키가 없으면 개발 환경에서만 가짜 결제창으로 흐름을 테스트한다.
+  paymentProvider: (payapp.userid && payapp.linkkey && payapp.linkval && payapp.requestkey
+    ? 'payapp'
+    : isProd
+      ? 'none'
+      : 'mock') as 'payapp' | 'mock' | 'none',
 
   gemini: {
     apiKey: str('GEMINI_API_KEY'),
     model: str('GEMINI_MODEL', 'gemini-2.5-flash'),
-    // 비우면 thinkingConfig를 보내지 않는다. 2.5 Flash는 0이면 생각 토큰을 쓰지 않아 원가가 낮다.
     thinkingBudget: str('GEMINI_THINKING_BUDGET', '0'),
     priceInputPerMUsd: num('AI_PRICE_INPUT_PER_M_USD', 0.3),
     priceOutputPerMUsd: num('AI_PRICE_OUTPUT_PER_M_USD', 2.5),
@@ -69,12 +74,12 @@ export const config = {
   },
 
   business: {
-    serviceName: str('SERVICE_NAME', '오늘사주'),
+    serviceName: str('SERVICE_NAME', '스터디AI'),
     name: str('BIZ_NAME', '(상호 입력 필요)'),
     owner: str('BIZ_OWNER', '(대표자 입력 필요)'),
-    regNo: str('BIZ_REG_NO', '(사업자등록번호 입력 필요)'),
-    mailOrderNo: str('BIZ_MAIL_ORDER_NO', '(통신판매업 신고번호 입력 필요)'),
-    address: str('BIZ_ADDRESS', '(사업장 주소 입력 필요)'),
+    regNo: str('BIZ_REG_NO', ''),
+    mailOrderNo: str('BIZ_MAIL_ORDER_NO', ''),
+    address: str('BIZ_ADDRESS', '(주소 입력 필요)'),
     phone: str('BIZ_PHONE', '(연락처 입력 필요)'),
     email: str('BIZ_EMAIL', '(이메일 입력 필요)'),
     privacyOfficer: str('BIZ_PRIVACY_OFFICER', str('BIZ_OWNER', '(개인정보 보호책임자 입력 필요)')),
@@ -88,8 +93,6 @@ export function assertProdConfig() {
   if (!config.adminKey) missing.push('ADMIN_KEY');
   if (!config.appUrl) missing.push('APP_URL');
   if (!config.gemini.apiKey) missing.push('GEMINI_API_KEY');
-  if (config.paymentProvider !== 'toss') missing.push('TOSS_CLIENT_KEY/TOSS_SECRET_KEY');
-  if (missing.length) {
-    throw new Error(`운영 환경 필수 설정이 비어 있습니다: ${missing.join(', ')}`);
-  }
+  if (config.paymentProvider !== 'payapp') missing.push('PAYAPP_USERID/LINKKEY/LINKVAL/REQUESTKEY');
+  if (missing.length) throw new Error(`운영 환경 필수 설정이 비어 있습니다: ${missing.join(', ')}`);
 }

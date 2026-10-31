@@ -23,10 +23,11 @@ export function useLocation() {
   return loc;
 }
 
-export function Link({ to, className, children }: { to: string; className?: string; children: React.ReactNode }) {
+export function Link({ to, className, children, title }: { to: string; className?: string; children: React.ReactNode; title?: string }) {
   return (
     <a
       href={to}
+      title={title}
       className={className}
       onClick={(e) => {
         if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
