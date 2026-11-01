@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Columns2, FileText, Loader2, PanelLeftOpen } from 'lucide-react';
+import { ArrowLeft, Columns2, Loader2, PanelLeftOpen } from 'lucide-react';
 import { api, type DocDetail as Doc, type MindNode } from '../lib/api.ts';
 import { useApp } from '../lib/app.tsx';
 import { useMaterial, usePoll } from '../lib/hooks.ts';
@@ -7,7 +7,7 @@ import { navigate } from '../lib/router.tsx';
 import { AppShell } from '../components/AppShell.tsx';
 import { ChatView } from '../components/ChatView.tsx';
 import { MindMap } from '../components/MindMap.tsx';
-import { Button, IconButton, Loading, Modal } from '../components/ui.tsx';
+import { Button, IconButton, Loading } from '../components/ui.tsx';
 import { SourcePane, type SourceHandle } from './doc/SourcePane.tsx';
 import { ConceptsTab, Generating, MaterialError, MemoTab, MemorizeTab, SummaryTab } from './doc/tabs.tsx';
 import { FlashcardsTab, QuizTab } from './doc/sets.tsx';
@@ -22,7 +22,10 @@ const TABS = [
   ['memo', '메모'],
   ['tutor', 'AI 튜터'],
 ] as const;
-type Tab = (typeof TABS)[number][0];
+type Tab = (typeof TABS)[number][0] | 'source';
+
+/** 폰에서는 레퍼런스처럼 원문이 첫 탭이다 */
+const SOURCE_LABEL: Record<Doc['kind'], string> = { pdf: 'PDF', docx: 'Word', pptx: 'PPT', youtube: '영상', audio: '녹음', image: '사진', memo: '원문' };
 
 function MindmapTab({ doc }: { doc: Doc }) {
   const m = useMaterial<{ root: MindNode }>(doc.id, 'mindmap');
@@ -110,10 +113,11 @@ export default function DocDetail({ id, search }: { id: string; search: string }
   const desktop = useIsDesktop();
   const [doc, setDoc] = useState<Doc | null>(null);
   const [error, setError] = useState('');
-  const initialTab = (new URLSearchParams(search).get('tab') as Tab) || 'summary';
-  const [tab, setTab] = useState<Tab>(TABS.some(([t]) => t === initialTab) ? initialTab : 'summary');
+  const initialTab = new URLSearchParams(search).get('tab') as Tab | null;
+  const [tab, setTab] = useState<Tab>(
+    initialTab && TABS.some(([t]) => t === initialTab) ? initialTab : desktop ? 'summary' : 'source',
+  );
   const [showSource, setShowSource] = useState(true);
-  const [mobileSource, setMobileSource] = useState(false);
   const [focus, setFocus] = useState<{ kind: 'quiz' | 'flashcards'; name: string; n: number } | null>(null);
   const source = useRef<SourceHandle>(null);
 
@@ -132,12 +136,17 @@ export default function DocDetail({ id, search }: { id: string; search: string }
 
   const selectTab = (t: Tab) => {
     setTab(t);
-    history.replaceState(null, '', `/doc/${id}${t === 'summary' ? '' : `?tab=${t}`}`);
+    history.replaceState(null, '', `/doc/${id}${t === 'summary' || t === 'source' ? '' : `?tab=${t}`}`);
   };
+
+  // 폰↔PC로 폭이 바뀌면 원문 탭은 PC의 왼쪽 패널로 돌아간다
+  useEffect(() => {
+    if (desktop && tab === 'source') setTab('summary');
+  }, [desktop, tab]);
 
   const onRef = (r: string) => {
     if (!r) return;
-    if (!desktop) setMobileSource(true);
+    if (!desktop) selectTab('source');
     else setShowSource(true);
     window.setTimeout(() => source.current?.goTo(r), 120);
   };
@@ -163,11 +172,13 @@ export default function DocDetail({ id, search }: { id: string; search: string }
   }
 
   const ready = doc.status === 'ready';
+  const sourceReady = ready || doc.kind === 'pdf';
+  const tabs: ReadonlyArray<readonly [Tab, string]> = desktop ? TABS : [['source', SOURCE_LABEL[doc.kind]], ...TABS];
 
   return (
-    <AppShell bare forceCollapsed>
+    <AppShell bare forceCollapsed mobileMenu={false}>
       <div className="flex h-full flex-col">
-        <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-3 pl-14 md:pl-3">
+        <header className="flex h-[52px] shrink-0 items-center gap-2 border-b border-line px-3">
           <IconButton onClick={() => navigate('/home')} aria-label="뒤로">
             <ArrowLeft size={19} />
           </IconButton>
@@ -180,13 +191,9 @@ export default function DocDetail({ id, search }: { id: string; search: string }
               로그인
             </Button>
           )}
-          {desktop ? (
+          {desktop && (
             <IconButton onClick={() => setShowSource((s) => !s)} aria-label="원문 패널">
               <Columns2 size={18} />
-            </IconButton>
-          ) : (
-            <IconButton onClick={() => setMobileSource(true)} aria-label="원문 보기">
-              <FileText size={18} />
             </IconButton>
           )}
         </header>
@@ -211,11 +218,11 @@ export default function DocDetail({ id, search }: { id: string; search: string }
           <section className="flex min-w-0 flex-1 flex-col">
             <div className="no-scrollbar flex shrink-0 justify-start overflow-x-auto px-3 py-2.5 md:justify-center">
               <div className="flex gap-0.5">
-                {TABS.map(([t, label]) => (
+                {tabs.map(([t, label]) => (
                   <button
                     key={t}
                     type="button"
-                    disabled={!ready}
+                    disabled={t === 'source' ? !sourceReady : !ready}
                     onClick={() => selectTab(t)}
                     className={`h-9 shrink-0 whitespace-nowrap rounded-full px-3.5 text-[14px] transition disabled:opacity-40 ${tab === t ? 'bg-solid font-medium text-on-solid' : 'text-sub hover:text-ink'}`}
                   >
@@ -224,8 +231,12 @@ export default function DocDetail({ id, search }: { id: string; search: string }
                 ))}
               </div>
             </div>
-            <div className={`min-h-0 flex-1 ${tab === 'tutor' || tab === 'mindmap' ? 'flex flex-col' : 'overflow-y-auto'}`}>
-              {doc.status === 'processing' ? (
+            <div className={`min-h-0 flex-1 ${tab === 'tutor' || tab === 'mindmap' || tab === 'source' ? 'flex flex-col' : 'overflow-y-auto'}`}>
+              {tab === 'source' && sourceReady ? (
+                <div className="min-h-0 flex-1">
+                  <SourcePane ref={source} doc={doc} />
+                </div>
+              ) : doc.status === 'processing' ? (
                 <Processing doc={doc} />
               ) : doc.status === 'error' ? (
                 <div className="py-24 text-center">
@@ -264,10 +275,6 @@ export default function DocDetail({ id, search }: { id: string; search: string }
           </section>
         </div>
       </div>
-
-      <Modal open={!desktop && mobileSource} onClose={() => setMobileSource(false)} width={720} className="!h-[88dvh] !p-0">
-        <div className="h-full pt-10">{ready || doc.kind === 'pdf' ? <SourcePane ref={source} doc={doc} /> : null}</div>
-      </Modal>
     </AppShell>
   );
 }

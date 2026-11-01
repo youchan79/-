@@ -258,12 +258,15 @@ export function AppShell({
   children,
   bare = false,
   forceCollapsed = false,
+  mobileMenu = true,
 }: {
   title?: React.ReactNode;
   right?: React.ReactNode;
   children: React.ReactNode;
   bare?: boolean;
   forceCollapsed?: boolean;
+  /** bare일 때 폰에서 떠 있는 메뉴 버튼. 자기 뒤로 가기 막대가 있는 화면은 끈다. */
+  mobileMenu?: boolean;
 }) {
   const [collapsedPref, toggle] = useCollapsed();
   const collapsed = forceCollapsed || collapsedPref;
@@ -294,7 +297,7 @@ export function AppShell({
             {right ?? <HeaderActions />}
           </header>
         )}
-        {bare && (
+        {bare && mobileMenu && (
           <button
             type="button"
             className="fixed left-3 top-2.5 z-30 inline-flex h-9 w-9 items-center justify-center rounded-full bg-canvas/80 text-sub md:hidden"

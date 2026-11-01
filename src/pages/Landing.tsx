@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
   Brain,
@@ -34,7 +34,7 @@ import { Button, Logo } from '../components/ui.tsx';
 import { LanguageSelect, useToggleTheme } from '../components/AppShell.tsx';
 import { BizInfo } from './Subscription.tsx';
 import { REVIEWS, SCHOOL_LOGOS } from '../content/landing.ts';
-import { Moon } from 'lucide-react';
+import { ArrowDown, Globe, Moon } from 'lucide-react';
 
 /* ---------- 제품 화면 미니어처 (실제 앱과 같은 구성) ---------- */
 
@@ -42,21 +42,21 @@ const MINI_TABS = ['요약', '퀴즈', '플래시카드', '마인드맵', '암�
 
 function MiniSlide() {
   return (
-    <div className="space-y-3 p-2 break-keep text-[#111] md:p-4">
+    <div className="space-y-3 p-2 break-keep text-[#111] @min-[700px]:p-4">
       {[
         { n: '01', t: '다중 저장 모형', s: 'Atkinson & Shiffrin, 1968' },
         { n: '02', t: '망각 곡선', s: 'Ebbinghaus, 1885' },
       ].map((p) => (
-        <div key={p.n} className="rounded-md border border-[#e7e7e7] bg-white p-2.5 md:p-4">
+        <div key={p.n} className="rounded-md border border-[#e7e7e7] bg-white p-2.5 @min-[700px]:p-4">
           <div className="flex items-start justify-between">
             <div>
               <div className="text-[9px] text-[#999]">인지심리학 6주차</div>
-              <div className="mt-1 text-[12px] font-semibold leading-snug md:text-[14px]">{p.t}</div>
+              <div className="mt-1 text-[12px] font-semibold leading-snug @min-[700px]:text-[14px]">{p.t}</div>
               <div className="text-[9px] text-[#999]">{p.s}</div>
             </div>
-            <div className="text-[22px] font-bold leading-none text-[#e9e9e9] md:text-[34px]">{p.n}</div>
+            <div className="text-[22px] font-bold leading-none text-[#e9e9e9] @min-[700px]:text-[34px]">{p.n}</div>
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-x-1 gap-y-1 border-t border-[#222] pt-2 text-[9px] leading-tight md:gap-2">
+          <div className="mt-3 grid grid-cols-3 gap-x-1 gap-y-1 border-t border-[#222] pt-2 text-[9px] leading-tight @min-[700px]:gap-2">
             <span className="font-semibold">감각 기억</span>
             <span className="font-semibold">단기 기억</span>
             <span className="font-semibold">장기 기억</span>
@@ -178,14 +178,14 @@ function MiniContent({ tab }: { tab: string }) {
 
 export function MiniApp({ tab = '퀴즈' }: { tab?: string }) {
   return (
-    <div className="overflow-hidden rounded-[18px] border border-[#e7e7e7] bg-white text-left text-[#111] shadow-[0_20px_60px_rgba(40,50,120,0.18)]">
+    <div className="@container overflow-hidden rounded-[18px] border border-[#e7e7e7] bg-white text-left text-[#111] shadow-[0_20px_60px_rgba(40,50,120,0.18)]">
       <div className="flex h-9 items-center gap-2 border-b border-[#eee] px-3 text-[10px]">
         <span className="text-[#999]">←</span>
         <span className="rounded-full border border-[#e5e5e5] px-1.5 text-[9px] text-[#888]">샘플</span>
         <span className="font-medium">인지심리학 · 기억과 망각</span>
         <span className="ml-auto rounded-full bg-[#111] px-2.5 py-0.5 text-[9px] text-white">로그인</span>
       </div>
-      <div className="grid h-[300px] grid-cols-[42%_1fr] md:h-[380px]">
+      <div className="grid h-[300px] grid-cols-[42%_1fr] @min-[700px]:h-[380px]">
         <div className="overflow-hidden border-r border-[#eee] bg-[#fafafa]">
           <MiniSlide />
         </div>
@@ -206,10 +206,38 @@ export function MiniApp({ tab = '퀴즈' }: { tab?: string }) {
   );
 }
 
+/** 레퍼런스처럼 폰에서는 PC 화면을 통째로 줄여 보여 준다. PC 폭(980px)이 들어가면 줄이지 않는다. */
+const MINI_APP_WIDTH = 980;
+
+function ScaledMiniApp({ tab }: { tab: string }) {
+  const outer = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const [box, setBox] = useState({ scale: 1, height: 0 });
+  useEffect(() => {
+    const measure = () => {
+      if (!outer.current || !inner.current) return;
+      const scale = Math.min(1, outer.current.clientWidth / MINI_APP_WIDTH);
+      setBox({ scale, height: inner.current.offsetHeight * scale });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    if (outer.current) ro.observe(outer.current);
+    return () => ro.disconnect();
+  }, []);
+  return (
+    <div ref={outer} style={{ height: box.height || undefined }}>
+      <div ref={inner} style={{ width: MINI_APP_WIDTH, transform: `scale(${box.scale})`, transformOrigin: 'top left' }}>
+        <MiniApp tab={tab} />
+      </div>
+    </div>
+  );
+}
+
 /* ---------- 섹션 ---------- */
 
 function Header() {
   const toggleTheme = useToggleTheme();
+  const { showToast } = useApp();
   return (
     <header className="sticky top-0 z-30 bg-canvas/85 backdrop-blur">
       <div className="mx-auto flex h-[68px] max-w-[1180px] items-center px-5">
@@ -217,8 +245,11 @@ function Header() {
           <Logo />
         </Link>
         <div className="ml-auto flex items-center gap-1.5">
-          <button type="button" onClick={toggleTheme} className="hidden h-9 w-9 items-center justify-center rounded-full text-sub hover:bg-soft sm:inline-flex" aria-label="테마 변경">
+          <button type="button" onClick={toggleTheme} className="inline-flex h-9 w-9 items-center justify-center rounded-full text-sub hover:bg-soft" aria-label="테마 변경">
             <Moon size={18} />
+          </button>
+          <button type="button" onClick={() => showToast('다른 언어는 준비 중이에요.')} className="inline-flex h-9 w-9 items-center justify-center rounded-full text-sub hover:bg-soft sm:hidden" aria-label="언어">
+            <Globe size={18} />
           </button>
           <LanguageSelect />
           <Button size="sm" className="ml-2" onClick={() => navigate('/home')}>
@@ -282,33 +313,63 @@ const OUTPUTS = ['AI 요약', 'AI 퀴즈', 'AI 플래시카드', 'AI 마인드�
 function FlowDiagram() {
   const rows = [12, 31, 50, 69, 88];
   return (
-    <div className="gradient-panel relative overflow-hidden rounded-[28px] px-5 py-10 md:px-16 md:py-14">
-      <svg className="pointer-events-none absolute inset-0 hidden h-full w-full md:block" viewBox="0 0 100 100" preserveAspectRatio="none">
-        {rows.map((y) => (
-          <path key={`l${y}`} d={`M24,${y} C40,${y} 40,50 50,50`} fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="0.25" />
-        ))}
-        {rows.map((y) => (
-          <path key={`r${y}`} d={`M50,50 C60,50 60,${y} 76,${y}`} fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="0.25" />
-        ))}
-      </svg>
-      <div className="relative grid grid-cols-2 items-center gap-6 md:grid-cols-[1fr_auto_1fr]">
-        <div className="space-y-4 md:space-y-8">
+    <>
+      {/* 폰: 위(넣는 것) → 가운데(스터디AI) → 아래(만들어지는 것) */}
+      <div className="gradient-panel overflow-hidden rounded-[24px] px-4 py-8 md:hidden">
+        <div className="flex flex-wrap justify-center gap-2">
           {INPUTS.map((it) => (
-            <div key={it.label} className="flex w-fit items-center gap-3 rounded-full bg-white px-4 py-3 text-[14px] text-[#111] shadow-sm">
-              <it.icon size={17} /> {it.label}
-            </div>
+            <span key={it.label} className="flex items-center gap-2 rounded-full bg-[#111] py-1.5 pl-1.5 pr-3.5 text-[13px] font-medium text-white">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2a2a2a]">
+                <it.icon size={14} />
+              </span>
+              {it.label}
+            </span>
           ))}
         </div>
-        <div className="order-first col-span-2 text-center text-[36px] font-bold tracking-[-0.06em] text-white/90 drop-shadow md:order-none md:col-span-1">StudyAI</div>
-        <div className="space-y-4 justify-self-end md:space-y-8">
+        <ArrowDown size={16} className="mx-auto my-3 text-[#3a46c8]" />
+        <div className="mx-auto w-fit rounded-full bg-white/35 px-7 py-5 backdrop-blur">
+          <span className="block rounded-full bg-[#111] px-6 py-3 text-[24px] font-bold tracking-[-0.04em] text-white">StudyAI</span>
+        </div>
+        <ArrowDown size={16} className="mx-auto my-3 text-[#3a46c8]" />
+        <div className="flex flex-wrap justify-center gap-2">
           {OUTPUTS.map((o) => (
-            <div key={o} className="flex w-fit items-center gap-2 rounded-full bg-[#111] px-4 py-3 text-[14px] text-white shadow-sm">
-              <Sparkles size={15} /> {o}
-            </div>
+            <span key={o} className="flex items-center gap-2 rounded-full bg-[#111] py-1.5 pl-1.5 pr-3.5 text-[13px] font-medium text-white">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#111]">
+                <Sparkles size={13} />
+              </span>
+              {o}
+            </span>
           ))}
         </div>
       </div>
-    </div>
+      <div className="gradient-panel relative hidden overflow-hidden rounded-[28px] px-5 py-10 md:block md:px-16 md:py-14">
+        <svg className="pointer-events-none absolute inset-0 hidden h-full w-full md:block" viewBox="0 0 100 100" preserveAspectRatio="none">
+          {rows.map((y) => (
+            <path key={`l${y}`} d={`M24,${y} C40,${y} 40,50 50,50`} fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="0.25" />
+          ))}
+          {rows.map((y) => (
+            <path key={`r${y}`} d={`M50,50 C60,50 60,${y} 76,${y}`} fill="none" stroke="rgba(255,255,255,0.9)" strokeWidth="0.25" />
+          ))}
+        </svg>
+        <div className="relative grid grid-cols-2 items-center gap-6 md:grid-cols-[1fr_auto_1fr]">
+          <div className="space-y-4 md:space-y-8">
+            {INPUTS.map((it) => (
+              <div key={it.label} className="flex w-fit items-center gap-3 rounded-full bg-white px-4 py-3 text-[14px] text-[#111] shadow-sm">
+                <it.icon size={17} /> {it.label}
+              </div>
+            ))}
+          </div>
+          <div className="order-first col-span-2 text-center text-[36px] font-bold tracking-[-0.06em] text-white/90 drop-shadow md:order-none md:col-span-1">StudyAI</div>
+          <div className="space-y-4 justify-self-end md:space-y-8">
+            {OUTPUTS.map((o) => (
+              <div key={o} className="flex w-fit items-center gap-2 rounded-full bg-[#111] px-4 py-3 text-[14px] text-white shadow-sm">
+                <Sparkles size={15} /> {o}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -347,9 +408,27 @@ function Showcase() {
       </div>
       <p className="mx-auto mt-5 max-w-[620px] text-center text-[15px] leading-[1.6] text-[#1d2340]">{cur.sub}</p>
       <div className="mx-auto mt-6 max-w-[980px]">
-        <MiniApp tab={cur.tab} />
+        <ScaledMiniApp tab={cur.tab} />
       </div>
       <style>{`@keyframes progress { from { transform: scaleX(0); transform-origin: left } to { transform: scaleX(1); transform-origin: left } }`}</style>
+    </div>
+  );
+}
+
+/** 폰: 레퍼런스처럼 기능 5개를 번호·제목·설명·화면 순서로 차례로 보여 준다 */
+function ShowcaseList() {
+  return (
+    <div className="space-y-24">
+      {SHOWCASE.map((s, j) => (
+        <div key={s.label} className="text-center">
+          <div className="text-[13px] text-muted">0{j + 1}</div>
+          <h3 className="mt-2 text-[30px] font-normal tracking-[-0.03em]">{s.label}</h3>
+          <p className="mx-auto mt-3 max-w-[420px] text-[15px] leading-[1.65] text-sub">{s.sub}</p>
+          <div className="gradient-panel mt-8 overflow-hidden rounded-[20px] p-3 text-left">
+            <ScaledMiniApp tab={s.tab} />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -468,7 +547,7 @@ function Reviews() {
   return (
     <section className="pt-32 md:pt-40">
       <div className="px-5 text-center">
-        <h2 className="text-[30px] font-medium tracking-[-0.03em] md:text-[36px]">{real ? '사용자 리뷰' : '이렇게 공부해요'}</h2>
+        <h2 className="text-[30px] font-normal tracking-[-0.03em] md:text-[36px] md:font-medium">{real ? '사용자 리뷰' : '이렇게 공부해요'}</h2>
         <p className="mt-3 text-[16px] text-muted">{real ? '스터디AI 사용자가 남긴 리뷰를 소개합니다.' : '스터디AI로 할 수 있는 일을 모았어요.'}</p>
       </div>
       <div className="mt-12 space-y-4 overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_6%,#000_94%,transparent)]">
@@ -495,12 +574,12 @@ export default function Landing() {
       <Header />
 
       <section className="mx-auto max-w-[1180px] px-5 pt-16 text-center md:pt-24">
-        <h1 className="text-[34px] font-medium leading-[1.25] tracking-[-0.035em] md:text-[52px]">
+        <h1 className="text-[28px] font-normal leading-[1.25] tracking-[-0.035em] md:text-[52px] md:font-medium">
           필기는 녹음 버튼 하나로.
           <br />
           수업 시간엔 수업만 들으세요.
         </h1>
-        <p className="mx-auto mt-6 max-w-[560px] text-[16px] text-sub md:text-[18px]">받아쓰기와 요약은 AI가 하고, 쌓인 강의는 퀴즈로 복습해요.</p>
+        <p className="mx-auto mt-5 max-w-[560px] text-[15px] leading-[1.7] text-sub md:mt-6 md:text-[18px]">받아쓰기와 요약은 AI가 하고, 쌓인 강의는 퀴즈로 복습해요.</p>
         <div className="mt-8 flex justify-center gap-2.5">
           <Button size="lg" variant="soft" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
             기능 보기
@@ -511,7 +590,7 @@ export default function Landing() {
         </div>
         <HeroNote />
         <div className="mx-auto mt-12 max-w-[980px]">
-          <MiniApp tab="퀴즈" />
+          <ScaledMiniApp tab="퀴즈" />
         </div>
       </section>
 
@@ -520,7 +599,7 @@ export default function Landing() {
       <section id="features" className="mx-auto grid max-w-[1180px] items-center gap-10 px-5 pt-32 md:grid-cols-2 md:gap-16 md:pt-40">
         <div>
           <div className="text-[14px] text-muted">강의 녹음</div>
-          <h2 className="mt-3 text-[30px] font-medium leading-[1.3] tracking-[-0.03em] md:text-[36px]">
+          <h2 className="mt-3 text-[30px] font-normal leading-[1.2] tracking-[-0.03em] md:text-[36px] md:font-medium md:leading-[1.3]">
             녹음은 버튼 하나,
             <br />
             정리는 AI가 끝까지.
@@ -540,16 +619,19 @@ export default function Landing() {
       </section>
 
       <section className="mx-auto max-w-[1180px] px-5 pt-32 text-center md:pt-40">
-        <h2 className="text-[30px] font-medium tracking-[-0.03em] md:text-[36px]">어떤 자료든 넣기만 하세요.</h2>
-        <p className="mt-3 text-[16px] text-muted">강의 슬라이드, 유튜브 강의, 녹음, 메모, 칠판 사진. AI가 읽고 공부할 수 있게 바꿔요.</p>
+        <h2 className="text-[30px] font-normal tracking-[-0.03em] md:text-[36px] md:font-medium">어떤 자료든 넣기만 하세요.</h2>
+        <p className="mt-3 text-[15px] text-muted md:text-[16px]">강의 슬라이드, 유튜브 강의, 녹음, 메모, 칠판 사진. AI가 읽고 공부할 수 있게 바꿔요.</p>
         <div className="mt-12 text-left">
           <FlowDiagram />
         </div>
       </section>
 
       <section className="mx-auto max-w-[1180px] px-5 pt-32 text-center md:pt-40">
-        <h2 className="text-[30px] font-medium tracking-[-0.03em] md:text-[36px]">자료 하나로 시험 준비까지</h2>
-        <div className="mt-12 text-left">
+        <h2 className="text-[30px] font-normal tracking-[-0.03em] md:text-[36px] md:font-medium">자료 하나로 시험 준비까지</h2>
+        <div className="mt-16 md:hidden">
+          <ShowcaseList />
+        </div>
+        <div className="mt-12 hidden text-left md:block">
           <Showcase />
         </div>
       </section>
@@ -558,7 +640,7 @@ export default function Landing() {
 
       <section className="mx-auto max-w-[1180px] px-5 pt-32 md:pt-40">
         <div className="gradient-panel rounded-[28px] px-6 py-16 text-center text-[#111] md:py-20">
-          <h2 className="text-[30px] font-medium tracking-[-0.03em] md:text-[36px]">오늘 수업부터 바로 써 보세요</h2>
+          <h2 className="text-[30px] font-normal tracking-[-0.03em] md:text-[36px] md:font-medium">오늘 수업부터 바로 써 보세요</h2>
           <p className="mx-auto mt-3 max-w-[520px] text-[15px] text-[#2a2f4a]">
             PDF와 영상을 요약하고 퀴즈·플래시카드로 복습하세요. 딱 한 번 {config ? config.plans.lifetime.price.toLocaleString('ko-KR') : '9,900'}원이면 평생 무제한, 매달 나가는 구독료가 없어요.
           </p>

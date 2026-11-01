@@ -122,7 +122,10 @@ export default function Subscription({ search }: { search: string }) {
           <ChevronLeft size={16} /> 돌아가기
         </button>
 
-        <h1 className="mt-10 text-center text-[26px] font-medium tracking-[-0.03em] md:text-[32px]">딱 한 번 결제로, 졸업할 때까지 평생 무제한</h1>
+        <h1 className="mt-10 break-keep text-center text-[24px] font-normal leading-[1.15] tracking-[-0.03em] md:text-[32px] md:font-medium">
+          딱 한 번 결제로, <br className="md:hidden" />
+          졸업할 때까지 평생 무제한
+        </h1>
         <p className="mt-2 text-center text-[16px] text-muted">매달 빠져나가는 구독료 없이 {won(plan.price)} 한 번이면 끝이에요</p>
 
         {orderState === 'checking' && (
