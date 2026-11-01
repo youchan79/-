@@ -2,36 +2,49 @@ import { config } from './config.ts';
 import { one, nowIso, addDays, kstDayStartIso } from './db.ts';
 
 export interface Sub {
-  plan: 'lifetime';
-  status: 'active' | 'canceled' | 'expired';
+  plan: 'monthly' | 'yearly' | 'lifetime'; // lifetime: 예전에 판매한 상품 (기간 제한 없음)
+  status: 'active' | 'canceled' | 'expired'; // canceled = 해지 예약 (기간 끝까지 Pro)
   rebill_no: string | null;
   amount: number;
-  current_period_end: string;
+  current_period_end: string; // 월간 자동 결제 중이면 다음 결제일
   cancel_at_period_end: number;
+  billing_day: number | null;
 }
+
+/** 월간 자동 결제 통보가 하루 이틀 늦게 와도 Pro가 끊기지 않게 둔 여유 */
+export const GRACE_DAYS = 2;
 
 export function getSub(userId: string): Sub | undefined {
   return one<Sub>('SELECT * FROM subscriptions WHERE user_id = ?', userId);
 }
 
+/** Pro가 실제로 끝나는 시각 (자동 결제 중인 월간은 여유 기간 포함) */
+export function proUntil(s: Sub): string | null {
+  if (s.status === 'expired') return null;
+  const autoRenew = s.status === 'active' && s.plan === 'monthly';
+  return autoRenew ? addDays(s.current_period_end, GRACE_DAYS) : s.current_period_end;
+}
+
 export function isPro(userId: string | undefined | null): boolean {
   if (!userId) return false;
   const s = getSub(userId);
-  return !!s && s.status === 'active' && s.current_period_end > nowIso();
+  const until = s && proUntil(s);
+  return !!until && until > nowIso();
 }
 
-/** 무료 플랜의 주간 기준: 가입 시각부터 7일 단위로 돈다. */
-export function weekWindow(createdAt: string, now = new Date()) {
-  const anchor = new Date(createdAt).getTime();
-  const weeks = Math.max(0, Math.floor((now.getTime() - anchor) / (7 * 86400_000)));
-  const start = new Date(anchor + weeks * 7 * 86400_000);
-  return { start: start.toISOString(), end: new Date(start.getTime() + 7 * 86400_000).toISOString() };
+/** 무료 플랜의 주간 기준: 매주 월요일 0시(한국 시간)에 새로 채워지고, 남은 횟수는 넘어가지 않는다. */
+export function weekWindow(now = new Date()) {
+  const kst = new Date(now.getTime() + 9 * 3600_000);
+  const sinceMonday = (kst.getUTCDay() + 6) % 7;
+  const startUtc = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate() - sinceMonday) - 9 * 3600_000;
+  return { start: new Date(startUtc).toISOString(), end: new Date(startUtc + 7 * 86400_000).toISOString() };
 }
 
 const FILE_KINDS = "('pdf','docx','pptx','image')";
 
-export function usage(userId: string, createdAt: string) {
-  const w = weekWindow(createdAt);
+// createdAt은 예전 '가입일 기준 주간' 때 쓰던 인자. 부르는 곳을 그대로 두려고 남겨 둔다.
+export function usage(userId: string, _createdAt?: string) {
+  const w = weekWindow();
   const c = (sql: string, ...p: any[]) => one<{ c: number }>(sql, ...p)!.c;
   return {
     weekStart: w.start,
@@ -55,7 +68,7 @@ export class LimitError extends Error {
 
 export function assertCanUpload(userId: string, createdAt: string, kind: string) {
   if (isPro(userId)) {
-    // 평생 이용권 공정 사용 상한 (PRO_MONTHLY_UPLOADS, 0이면 제한 없음)
+    // Pro 공정 사용 상한 (PRO_MONTHLY_UPLOADS, 0이면 제한 없음)
     const cap = config.pro.monthlyUploads;
     if (cap > 0) {
       const used = one<{ c: number }>(
@@ -69,10 +82,10 @@ export function assertCanUpload(userId: string, createdAt: string, kind: string)
   }
   const u = usage(userId, createdAt);
   if (['pdf', 'docx', 'pptx', 'image'].includes(kind) && u.files >= config.free.weeklyFiles) {
-    throw new LimitError(`이번 주 무료 업로드(${config.free.weeklyFiles}회)를 모두 사용했어요.`, 'files');
+    throw new LimitError(`이번 주 PDF 무료 업로드 ${config.free.weeklyFiles}회를 모두 썼어요. 월요일 0시에 다시 채워지길 기다리거나 Pro로 업그레이드하세요.`, 'files');
   }
   if (kind === 'youtube' && u.youtube >= config.free.weeklyYoutube) {
-    throw new LimitError(`이번 주 유튜브 무료 분석(${config.free.weeklyYoutube}회)을 모두 사용했어요.`, 'youtube');
+    throw new LimitError(`이번 주 유튜브 무료 분석 ${config.free.weeklyYoutube}회를 모두 썼어요. 월요일 0시에 다시 채워지길 기다리거나 Pro로 업그레이드하세요.`, 'youtube');
   }
 }
 

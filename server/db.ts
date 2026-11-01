@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS exams (
 
 CREATE TABLE IF NOT EXISTS subscriptions (
   user_id TEXT PRIMARY KEY REFERENCES users(id),
-  plan TEXT NOT NULL,           -- monthly | yearly
+  plan TEXT NOT NULL,           -- monthly | yearly (예전 상품: lifetime)
   status TEXT NOT NULL,         -- active | canceled | expired
   rebill_no TEXT,
   amount INTEGER NOT NULL,
@@ -169,6 +169,15 @@ CREATE TABLE IF NOT EXISTS funnel_events (
 );
 CREATE INDEX IF NOT EXISTS idx_funnel_time ON funnel_events(created_at);
 `);
+
+// 운영 DB에 열을 더하기만 한다 (지우거나 바꾸지 않음)
+function addColumn(table: string, column: string, type: string) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+}
+// 월간 정기결제일 (한국 날짜 1~28, 90 = 말일). 페이앱 rebillCycleMonth와 같은 값.
+addColumn('subscriptions', 'billing_day', 'INTEGER');
+db.exec('CREATE INDEX IF NOT EXISTS idx_payments_rebill ON payments(rebill_no)');
 
 export type Row = Record<string, any>;
 

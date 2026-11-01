@@ -27,14 +27,16 @@ import { LimitError, assertCanExam, assertCanTutor, assertCanUpload, isPro, maxU
 import { createExam, getExam, listExams, startExam, submitExam } from './exam.ts';
 import {
   PaymentError,
+  cancelSubscription,
   handleFeedback,
+  isPlan,
   mockPay,
+  mockRenewal,
   normalizePhone,
   orderStatus,
   planInfo,
   startCheckout,
   subscriptionView,
-  type Plan,
 } from './billing.ts';
 import { sendServerEvent } from './meta.ts';
 import { seedSamples } from './samples.ts';
@@ -140,6 +142,8 @@ app.post(
   requireUser,
   h(async (req, res) => {
     const userId = req.user!.id;
+    // 탈퇴한 뒤에도 월간 자동 결제가 계속되지 않게 먼저 해지한다 (해지 실패면 탈퇴도 멈춘다)
+    if (subscriptionView(userId).autoRenew) await cancelSubscription(userId);
     for (const d of all('SELECT id FROM documents WHERE user_id = ?', userId)) deleteDoc(d.id);
     run('DELETE FROM chats WHERE user_id = ?', userId);
     run('DELETE FROM exams WHERE user_id = ?', userId);
@@ -514,7 +518,7 @@ app.post(
   '/api/checkout',
   requireUser,
   h(async (req, res) => {
-    const plan: Plan = 'lifetime';
+    const plan = isPlan(req.body?.plan) ? req.body.plan : 'monthly';
     const phone = normalizePhone(req.body?.phone);
     if (!phone) return res.status(400).json({ error: '휴대폰 번호를 확인해 주세요.' });
     const out = await startCheckout({ user: req.user!, plan, phone, origin: origin(req) });
@@ -548,6 +552,16 @@ app.post(
   },
 );
 
+/** 월간 구독 해지: 다음 결제부터 멈추고, 결제한 기간 끝까지 Pro 유지 */
+app.post(
+  '/api/subscription/cancel',
+  requireUser,
+  h(async (req, res) => {
+    await cancelSubscription(req.user!.id);
+    res.json(meView(req));
+  }),
+);
+
 
 // 개발용 가짜 결제창
 app.get('/api/payapp/mock-order/:orderId', requireUser, (req, res) => {
@@ -562,6 +576,13 @@ app.post('/api/payapp/mock-pay', requireUser, (req, res) => {
   if (!orderStatus(req.user!.id, orderId)) return res.status(404).json({ error: '주문을 찾을 수 없어요.' });
   const r = mockPay(orderId);
   res.json({ ok: r.ok });
+});
+
+// 개발용: 월간 자동 결제가 한 번 더 일어난(또는 실패한) 것처럼 결제통보를 보낸다
+app.post('/api/payapp/mock-renewal', requireUser, (req, res) => {
+  if (config.paymentProvider !== 'mock') return res.status(404).end();
+  const r = mockRenewal(req.user!.id, req.body?.fail !== true);
+  res.json({ ok: r.ok, me: meView(req) });
 });
 
 /* ---------- 관리자 ---------- */
@@ -591,8 +612,20 @@ app.get('/api/admin/stats', (req, res) => {
   for (const f of funnel) if (rows[f.d]) rows[f.d][f.name] = f.c;
   for (const a of ai) if (rows[a.d]) Object.assign(rows[a.d], { ai_calls: a.n, ai_cost: a.cost });
   const unit = all('SELECT kind, COUNT(*) AS n, AVG(cost_krw) AS avg_cost FROM ai_usage GROUP BY kind ORDER BY n DESC');
-  const pro = one<{ c: number }>("SELECT COUNT(*) AS c FROM subscriptions WHERE status != 'expired' AND current_period_end > ?", nowIso())!.c;
-  res.json({ days: Object.values(rows).reverse(), pro, unitCost: unit, plans: config.plans });
+  const subs = one<{ pro: number; monthly: number; yearly: number; canceled: number }>(
+    `SELECT COUNT(*) AS pro, SUM(plan = 'monthly') AS monthly, SUM(plan = 'yearly') AS yearly, SUM(status = 'canceled') AS canceled
+     FROM subscriptions WHERE status != 'expired' AND current_period_end > ?`,
+    nowIso(),
+  )!;
+  res.json({
+    days: Object.values(rows).reverse(),
+    pro: subs.pro,
+    proMonthly: subs.monthly ?? 0,
+    proYearly: subs.yearly ?? 0,
+    proCanceled: subs.canceled ?? 0,
+    unitCost: unit,
+    plans: config.plans,
+  });
 });
 
 /* ---------- 오류 처리 ---------- */

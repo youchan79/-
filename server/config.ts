@@ -38,9 +38,11 @@ export const config = {
   adminKey: str('ADMIN_KEY', isProd ? '' : 'dev-admin'),
   serviceName: str('SERVICE_NAME', '스터디AI'),
 
-  // 단건 결제 하나: 한 번 결제하면 평생 Pro
+  // Pro 월간(매달 자동 결제)과 연간(1년치 한 번 결제). 기본값은 유니브AI 웹 가격과 같다.
+  // 예전 PLAN_LIFETIME_* 값은 더 이상 읽지 않는다 (남아 있어도 영향 없음).
   plans: {
-    lifetime: { name: str('PLAN_LIFETIME_NAME', '스터디AI Pro 평생 이용권'), price: num('PLAN_LIFETIME_PRICE', 9900) },
+    monthly: { name: str('PLAN_MONTHLY_NAME', '스터디AI Pro 월간 구독'), price: num('PLAN_MONTHLY_PRICE', 9900) },
+    yearly: { name: str('PLAN_YEARLY_NAME', '스터디AI Pro 연간 이용권'), price: num('PLAN_YEARLY_PRICE', 82800) },
   },
 
   free: {
@@ -52,7 +54,7 @@ export const config = {
   },
   pro: {
     maxFileMb: num('PRO_MAX_FILE_MB', 1024),
-    // 평생 이용권의 공정 사용 상한 (한 달 업로드 수). 0이면 제한 없음.
+    // Pro 공정 사용 상한 (최근 30일 업로드 수). 0이면 제한 없음.
     monthlyUploads: num('PRO_MONTHLY_UPLOADS', 0),
   },
 
