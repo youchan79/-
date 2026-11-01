@@ -1,20 +1,84 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# 스터디AI (레퍼런스 데모)
 
-# Run and deploy your AI Studio app
+유니브AI(univai.co.kr)의 화면 구조, 사용 흐름, 기능 구성을 그대로 따라 만든 로컬 레퍼런스용 데모다. 배포 전에 색, 디자인, 문구를 바꿀 예정이다.
 
-This contains everything you need to run your app locally.
+## 따라 만든 것과 일부러 뺀 것
 
-View your app in AI Studio: https://ai.studio/apps/21fca6a8-ad84-447b-80d0-41fed2d81ce4
+| 그대로 따라 만든 것 | 바꾸거나 뺀 것 |
+|---|---|
+| 사이드바 구성 (콘텐츠 추가, 문서, AI 튜터, 시험 문제 만들기, 설정, 피드백, 테마, 앱 다운로드) | 로고와 서비스명 (StudyAI 텍스트 로고) |
+| 문서 목록, 콘텐츠 추가 화면, 문서 상세 2단 레이아웃 | 레퍼런스의 이미지, 대학 로고, 앱스토어 리뷰 (가져오지 않음) |
+| 문서 상세 8개 탭: 요약, 퀴즈, 플래시카드, 마인드맵, 암기, 개념, 메모, AI 튜터 | 마케팅 문구 (같은 구조로 새로 씀) |
+| 시험 문제 만들기 (여러 자료, 시간 제한, 답안지, 자료별 약점, 틀린 문제 다시 풀기, 족보 변형) | 가입자 수 같은 수치 (근거 없는 숫자라 넣지 않음) |
+| 설정 (일반, 계정, 구독, AI 설정, 개선 요청), 구독 관리 페이지 | 앱스토어 리뷰 섹션 → "이럴 때 쓰세요" 섹션 |
+| 무료 한도 (매주 PDF 2·유튜브 2) | 요금: 구독 대신 Pro 평생 이용권 9,900원 한 번 결제 (페이앱 단건) |
+| 라이트/다크 테마, 랜딩 섹션 순서 | 다국어 (한국어만 동작) |
 
-## Run Locally
+## 실행
 
-**Prerequisites:**  Node.js
+```bash
+npm install
+cp .env.example .env   # 비워 둔 채로도 실행된다
+npm run dev            # http://localhost:3000
+```
 
+키가 없으면 **가짜 AI**(입력 문장으로 만든 더미 학습 자료)와 **가짜 페이앱 결제창**으로 모든 흐름이 돈다. `ANTHROPIC_API_KEY`를 넣으면 Claude Haiku 5.5로 실제 자료를 만든다.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+배포와 메타 픽셀 설정은 [DEPLOY.md](DEPLOY.md)를 따른다.
+
+- 처음 화면: `/` 랜딩, `/home` 문서 목록 (로그인 없이 샘플 문서 열람 가능)
+- 관리자: `/admin` (개발 기본 키 `dev-admin`)
+- 타입 검사 `npm run lint`, 운영 빌드 `npm run build && npm start`
+
+## 기능
+
+- **자료 넣기**: PDF, PPTX, DOCX, 사진 여러 장(필기·칠판), 유튜브 링크, 강의 녹음(브라우저 녹음 + 실시간 자막, 녹음 파일 업로드), 메모
+- **원문 읽기**: Claude가 PDF·사진을 직접 읽어 `[p.3]` 위치 표시가 붙은 원문으로 옮긴다. PPTX, DOCX는 서버에서 텍스트를 뽑는다. 녹음은 브라우저 실시간 자막(`[mm:ss]`), 유튜브는 사용자가 붙여 넣은 스크립트를 쓴다 (Claude는 소리·영상을 읽지 못함). `GEMINI_API_KEY`를 넣으면 녹음 파일과 유튜브를 자동으로 받아 적는다.
+- **학습 자료**: 요약(쉬운 설명, 표), 퀴즈(힌트, 해설, 틀린 문제 다시), 플래시카드(뒤집기, 알고있어요/모르겠어요), 마인드맵(접기, 확대, SVG 저장), 암기 체크리스트, 개념 사전(이 개념으로 퀴즈/카드 생성), 메모, 자료 기반 AI 튜터
+- **근거 이동**: 학습 자료의 `p.3` 표시를 누르면 왼쪽 원문이 그 페이지(영상·녹음은 그 시점)로 이동한다.
+- **AI 튜터**: 일반 대화, 최신 정보 질문은 Claude 웹 검색을 붙여 답한다.
+- **시험지**: 자료 최대 10개, 이미 푼 퀴즈와 겹치지 않게 출제, 타이머, 자동 제출, 자료별 정답률.
+- **무료 한도**: 매주 파일 2·유튜브 2·시험지 1, 하루 튜터 10회, 자료마다 퀴즈·카드 1세트. 강의 녹음은 무제한. Pro(평생 이용권)는 모두 무제한이며, 필요하면 `PRO_MONTHLY_UPLOADS`로 공정 사용 상한을 둘 수 있다.
+- **AI 설정**: 학습 자료 언어, 요약 길이, 퀴즈 기본 난이도가 실제 생성 프롬프트에 반영된다.
+- **원가 기록**: 모든 AI 호출의 토큰과 원가(캐시 포함)를 `/admin`에서 본다. 실측: 4쪽 PDF 하나로 8개 탭을 모두 만들면 약 15원.
+
+## 결제 (페이앱 개인판매자, 단건)
+
+상품은 **Pro 평생 이용권 9,900원** 하나다. 페이앱 `payrequest`로 한 번 결제하면 평생 Pro가 되고 자동 결제는 없다.
+
+- 결제 완료는 페이앱이 서버로 보내는 **결제통보**(`POST /api/payapp/feedback`)에서만 처리한다. `userid`, `linkkey`, `linkval`, `hash = sha256(userid + responsedate + 결제KEY)`, 금액을 모두 확인하고 `SUCCESS`를 응답한다. 같은 결제가 여러 번 와도 `mul_no`로 한 번만 반영한다.
+- 승인 취소(환불) 통보가 오면 Pro를 끝낸다.
+- 결제창에서 돌아오면(`/subscription?order=…`) 결제 상태를 확인하고, 처음 확인될 때 메타 `Purchase`를 브라우저와 서버(전환 API)에 같은 event_id로 보낸다.
+- 환불 정책은 유니브AI의 기준(7일 이내 미사용 전액 환불, 회사 귀책 전액 환불, 디지털 콘텐츠 제공 시작 시 법령 범위에서 제한, 과오납금 환불)을 평생 이용권에 맞게 옮겼다.
+
+페이앱 키(`PAYAPP_USERID`, `PAYAPP_LINKKEY`, `PAYAPP_LINKVAL`, `PAYAPP_REQUESTKEY`)는 판매자 사이트 > 설정 > 연동 정보에 있다. 결제통보는 외부 주소로만 받을 수 있으므로 실제 결제 시험은 배포한 뒤에 한다.
+
+## 구조
+
+```
+server/
+  index.ts     API 라우트
+  docs.ts      문서 만들기, 원문 추출, 학습 자료/세트 생성
+  prompts.ts   프롬프트, JSON 스키마, 개발용 가짜 출력
+  ai.ts        Claude 호출 (PDF·사진 읽기, JSON 스키마 출력, 원문 캐시, 웹 검색 붙인 튜터), 원가 기록
+  media.ts     선택: Gemini로 녹음 파일·유튜브 받아쓰기, 붙여 넣은 유튜브 스크립트 정리
+  exam.ts      시험지 생성과 채점
+  billing.ts   페이앱 단건 결제, 결제통보, 가짜 결제
+  plan.ts      Pro 여부와 무료 한도
+  samples.ts   모두에게 보이는 샘플 문서
+  db.ts auth.ts meta.ts config.ts
+src/
+  pages/       Landing, Documents, AddContent, Record, MemoNew, DocDetail(+doc/), Tutor, Exam, Settings, Subscription, Legal, Admin
+  components/  AppShell(사이드바), MindMap, ChatView, Modals, ui
+  lib/         api, app(전역 상태, 테마), hooks, markdown, pdf(pdf.js), upload, pixel, router
+```
+
+## 알려진 한계
+
+- 로컬에서는 페이앱 결제통보를 받을 수 없어 실제 결제는 외부 주소가 있어야 시험할 수 있다.
+- 녹음은 Chrome 계열 브라우저의 실시간 자막으로 정리한다. Safari 등에서 녹음하거나 녹음 파일을 올리려면 `GEMINI_API_KEY`가 필요하다.
+- 유튜브는 자동 자막 가져오기를 하지 않는다 (유튜브의 차단을 우회해야 해서 넣지 않았다). 스크립트를 붙여 넣거나 `GEMINI_API_KEY`를 쓴다.
+- 아이폰 HEIC 사진은 받지 않는다 (JPG, PNG, WEBP만).
+- 예전 형식 PPT, DOC는 받지 않는다 (PPTX, DOCX, PDF로 저장해서 올린다).
+- 업로드 파일과 DB는 `DATA_DIR` 한 곳에 쌓인다. 운영 전에 백업과 지워지지 않는 디스크가 필요하다.
+- 비밀번호 재설정, 소셜 로그인, 앱 스토어 앱은 없다.

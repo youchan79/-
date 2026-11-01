@@ -1,0 +1,51 @@
+# Render 블루프린트: Render 대시보드 > New > Blueprint 에서 이 저장소를 고르면 아래대로 만들어진다.
+# sync: false 인 값은 만들 때 화면에서 직접 넣는다 (git에 올리지 않는 값).
+services:
+  - type: web
+    name: studyai
+    runtime: docker
+    branch: ccr-eed69f99-nfucy9
+    region: singapore
+    plan: starter # 디스크(/data)를 붙이려면 유료 인스턴스가 필요하다
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/config
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /data
+      - key: SERVICE_NAME
+        value: 스터디AI
+      - key: CLAUDE_MODEL
+        value: claude-haiku-5-5
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_KEY
+        generateValue: true
+      # APP_URL은 비워 두면 Render 주소(RENDER_EXTERNAL_URL)를 쓴다. 자체 도메인을 붙이면 넣는다.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PAYAPP_USERID
+        sync: false
+      - key: PAYAPP_LINKKEY
+        sync: false
+      - key: PAYAPP_LINKVAL
+        sync: false
+      - key: PAYAPP_REQUESTKEY
+        sync: false
+      - key: BIZ_NAME
+        value: 스터디AI
+      - key: BIZ_OWNER
+        sync: false
+      - key: BIZ_ADDRESS
+        sync: false
+      - key: BIZ_PHONE
+        sync: false
+      - key: BIZ_EMAIL
+        sync: false
+      - key: BIZ_PRIVACY_OFFICER
+        sync: false
