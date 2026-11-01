@@ -5,6 +5,8 @@ import { Link, navigate } from '../lib/router.tsx';
 import { Button, Logo } from '../components/ui.tsx';
 import { LanguageSelect, useToggleTheme } from '../components/AppShell.tsx';
 import { BizInfo } from './Subscription.tsx';
+import { api } from '../lib/api.ts';
+import { REVIEWS, SCHOOL_LOGOS } from '../content/landing.ts';
 import { Moon } from 'lucide-react';
 
 /* ---------- 제품 화면 미니어처 (실제 앱과 같은 구성) ---------- */
@@ -325,14 +327,138 @@ function Showcase() {
   );
 }
 
-const USE_CASES = [
-  { when: '수업이 끝난 직후', what: '녹음을 멈추면 요약과 퀴즈가 바로 생겨요. 잊어버리기 전에 5분만 풀어 보세요.' },
-  { when: '시험 2주 전', what: '범위 자료를 모아 모의고사를 만들고, 자료별로 약한 곳부터 다시 봐요.' },
-  { when: '과제 마감 전날 밤', what: 'AI 튜터에게 개념을 물어보고, 초안을 다듬을 포인트를 받아 보세요.' },
-];
+/* ---------- 실제 이용 수치, 대학 로고, 리뷰 ---------- */
+
+interface PublicStats {
+  users: number;
+  generated: number;
+  asOf: string;
+}
+
+/** 62만, 1억 2,000만 처럼 한국식 단위로 */
+function koCount(n: number) {
+  if (n >= 100_000_000) {
+    const eok = Math.floor(n / 100_000_000);
+    const man = Math.floor((n % 100_000_000) / 10_000);
+    return man ? `${eok}억 ${man.toLocaleString('ko-KR')}만` : `${eok}억`;
+  }
+  if (n >= 10_000) return `${Math.floor(n / 10_000).toLocaleString('ko-KR')}만`;
+  return n.toLocaleString('ko-KR');
+}
+
+function usePublicStats() {
+  const [stats, setStats] = useState<PublicStats | null>(null);
+  useEffect(() => {
+    api<PublicStats>('/api/stats/public').then(setStats).catch(() => {});
+  }, []);
+  return stats;
+}
+
+const asOfLabel = (iso: string) => {
+  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
+  return `${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 기준`;
+};
+
+/** 히어로 아래: 실제 가입자 수와 생성 건수 (DB에서 센 값) */
+function StatsLine({ stats }: { stats: PublicStats | null }) {
+  if (!stats) return <div className="mt-6 h-8" />;
+  return (
+    <div className="mt-6 flex items-center justify-center gap-3 text-[14px] text-muted">
+      <span className="flex -space-x-2">
+        {['#cfd6ff', '#ffd9c7', '#cdeedd'].map((c) => (
+          <span key={c} className="h-8 w-8 rounded-full border-2 border-canvas" style={{ background: c }} />
+        ))}
+      </span>
+      <span>
+        {asOfLabel(stats.asOf)}, 누적 가입 <b className="font-semibold text-ink">{koCount(stats.users)}명</b> · <b className="font-semibold text-ink">{koCount(stats.generated)}건</b> 생성
+      </span>
+    </div>
+  );
+}
+
+/** 이용 대학 로고 줄. SCHOOL_LOGOS가 비어 있으면 같은 모양의 빈 원을 보여 준다. */
+function SchoolStrip({ stats }: { stats: PublicStats | null }) {
+  const items = SCHOOL_LOGOS.length ? SCHOOL_LOGOS : Array.from({ length: 11 }, (_, i) => ({ name: '', src: '', key: i }));
+  const row = [...items, ...items];
+  return (
+    <section className="pt-24 md:pt-28">
+      <p className="text-center text-[15px] text-muted">{stats ? `${asOfLabel(stats.asOf)} 누적 가입 ${koCount(stats.users)}명 돌파` : '\u00a0'}</p>
+      <div className="relative mt-8 overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_92%,transparent)]">
+        <div className="animate-marquee flex w-max gap-16">
+          {row.map((s, i) =>
+            s.src ? (
+              <img key={i} src={s.src} alt={s.name} className="h-16 w-16 shrink-0 object-contain" />
+            ) : (
+              <span key={i} className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-dashed border-line text-[10px] text-muted">
+                대학 로고
+              </span>
+            ),
+          )}
+        </div>
+      </div>
+      {!SCHOOL_LOGOS.length && import.meta.env.DEV && (
+        <p className="mt-4 text-center text-[12px] text-muted">개발 메모: 실제 이용 대학과 사용 가능한 로고 이미지를 src/content/landing.ts에 넣으면 이 자리에 표시돼요</p>
+      )}
+    </section>
+  );
+}
+
+function ReviewCard({ r }: { r?: { title: string; body: string; source: string } }) {
+  return (
+    <div className="w-[300px] shrink-0 rounded-[22px] bg-soft p-6 text-left">
+      <div className={`text-[14px] tracking-[2px] ${r ? 'text-[#f5a524]' : 'text-line'}`}>★★★★★</div>
+      {r ? (
+        <>
+          <div className="mt-3 text-[16px] font-semibold">{r.title}</div>
+          <p className="mt-2 line-clamp-4 text-[14px] leading-[1.65] text-sub">{r.body}</p>
+          <div className="mt-4 text-[12px] text-muted">{r.source}</div>
+        </>
+      ) : (
+        <div className="mt-4 space-y-2.5" aria-hidden>
+          <div className="h-3.5 w-2/5 rounded bg-soft-2" />
+          <div className="h-3 w-full rounded bg-soft-2" />
+          <div className="h-3 w-11/12 rounded bg-soft-2" />
+          <div className="h-3 w-3/5 rounded bg-soft-2" />
+          <div className="!mt-5 h-2.5 w-1/4 rounded bg-soft-2" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 사용자 리뷰 두 줄 흐름. REVIEWS가 비어 있으면 빈 카드 틀만 보여 준다. */
+function Reviews() {
+  const list = REVIEWS.length ? REVIEWS : Array.from({ length: 6 }, () => undefined);
+  const half = Math.ceil(list.length / 2);
+  const rows = [list.slice(0, half), list.slice(half).length ? list.slice(half) : list.slice(0, half)];
+  return (
+    <section className="pt-32 md:pt-40">
+      <div className="px-5 text-center">
+        <h2 className="text-[30px] font-medium tracking-[-0.03em] md:text-[36px]">사용자 리뷰</h2>
+        <p className="mt-3 text-[16px] text-muted">스터디AI 사용자가 남긴 리뷰를 소개합니다.</p>
+        {!REVIEWS.length && import.meta.env.DEV && (
+          <p className="mt-2 text-[12px] text-muted">개발 메모: 실제 사용자 리뷰가 모이면 src/content/landing.ts에 넣으면 이 카드에 채워져요</p>
+        )}
+      </div>
+      <div className="mt-12 space-y-4 overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_6%,#000_94%,transparent)]">
+        {rows.map((row, ri) => {
+          const loop = [...row, ...row, ...row, ...row];
+          return (
+            <div key={ri} className="animate-marquee flex w-max gap-4" style={{ animationDirection: ri ? 'reverse' : 'normal', animationDuration: ri ? '75s' : '60s' }}>
+              {loop.map((r, i) => (
+                <ReviewCard key={i} r={r} />
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 export default function Landing() {
   const { me } = useApp();
+  const stats = usePublicStats();
   useEffect(() => {
     if (me?.user) navigate('/home', { replace: true });
   }, [me?.user]);
@@ -356,11 +482,13 @@ export default function Landing() {
             지금 시작하기
           </Button>
         </div>
-        <p className="mt-6 text-[14px] text-muted">PDF · PPT · 유튜브 · 강의 녹음 · 필기 사진까지, 회원가입 없이 샘플부터 둘러보세요</p>
+        <StatsLine stats={stats} />
         <div className="mx-auto mt-12 max-w-[980px]">
           <MiniApp tab="퀴즈" />
         </div>
       </section>
+
+      <SchoolStrip stats={stats} />
 
       <section id="features" className="mx-auto grid max-w-[1180px] items-center gap-10 px-5 pt-32 md:grid-cols-2 md:gap-16 md:pt-40">
         <div>
@@ -399,17 +527,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-[1180px] px-5 pt-32 md:pt-40">
-        <h2 className="text-center text-[30px] font-medium tracking-[-0.03em] md:text-[36px]">이럴 때 쓰세요</h2>
-        <div className="mt-12 grid gap-3 md:grid-cols-3">
-          {USE_CASES.map((u) => (
-            <div key={u.when} className="rounded-[22px] bg-soft p-7">
-              <div className="text-[18px] font-semibold">{u.when}</div>
-              <p className="mt-3 text-[15px] leading-[1.7] text-sub">{u.what}</p>
-            </div>
-          ))}
-        </div>
-      </section>
+      <Reviews />
 
       <section className="mx-auto max-w-[1180px] px-5 pt-32 md:pt-40">
         <div className="gradient-panel rounded-[28px] px-6 py-16 text-center text-[#111] md:py-20">

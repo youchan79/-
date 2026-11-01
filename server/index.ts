@@ -85,6 +85,17 @@ function meView(req: Request) {
 
 app.get('/api/me', (req, res) => res.json(meView(req)));
 
+/** 랜딩에 보여 줄 실제 수치: 가입자 수(탈퇴 제외)와 AI 생성 건수. 1분 캐시. */
+let statsCache: { at: number; body: { users: number; generated: number; asOf: string } } | null = null;
+app.get('/api/stats/public', (_req, res) => {
+  if (!statsCache || Date.now() - statsCache.at > 60_000) {
+    const users = one<{ c: number }>("SELECT COUNT(*) AS c FROM users WHERE email NOT LIKE 'deleted\\_%' ESCAPE '\\'")!.c;
+    const generated = one<{ c: number }>("SELECT COUNT(*) AS c FROM ai_usage WHERE kind NOT LIKE 'extract\\_%' ESCAPE '\\'")!.c;
+    statsCache = { at: Date.now(), body: { users, generated, asOf: nowIso() } };
+  }
+  res.json(statsCache.body);
+});
+
 app.post(
   '/api/auth/signup',
   h(async (req, res) => {
