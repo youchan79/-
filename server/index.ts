@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import { config, assertProdConfig } from './config.ts';
@@ -88,6 +89,11 @@ const app = express();
 app.set('trust proxy', true);
 app.use(express.json({ limit: '2mb' }));
 app.use(attachIdentity);
+// 공유 링크 화면은 검색에 나오지 않게
+app.use((req, res, next) => {
+  if (req.path.startsWith('/share/') || req.path.startsWith('/api/share/')) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  next();
+});
 
 type Handler = (req: Request, res: Response) => Promise<unknown> | unknown;
 const h = (fn: Handler) => (req: Request, res: Response, next: NextFunction) => {
@@ -669,6 +675,76 @@ app.get('/api/docs/:id/materials/:kind', (req, res) => {
     m = getMaterial(d.id, kind);
   }
   res.json({ status: m?.status ?? (d.status === 'ready' ? 'none' : d.status), json: m?.json ? JSON.parse(m.json) : null, error: m?.error ?? null });
+});
+
+/* ---------- 공유 링크 ----------
+ * 받은 사람은 로그인 없이 고른 학습 자료(요약·퀴즈·플래시카드·마인드맵·암기·개념)만 본다.
+ * 원본 파일·원문·메모·AI 튜터는 이 길로 나가지 않는다(설계서 D4). 다른 문서는 토큰으로 열 수 없다.
+ */
+const SHARE_ITEMS = ['summary', 'quiz', 'flashcards', 'mindmap', 'memorize', 'concepts'] as const;
+type ShareItem = (typeof SHARE_ITEMS)[number];
+
+const activeShare = (docId: string) => one('SELECT token, items_json FROM shares WHERE doc_id = ? AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1', docId);
+const shareView = (s: any) => (s ? { token: s.token, items: JSON.parse(s.items_json) as ShareItem[] } : null);
+
+app.get('/api/docs/:id/share', requireUser, (req, res) => {
+  const d = loadDoc(req, res, { owner: true });
+  if (!d) return;
+  res.json({ share: shareView(activeShare(d.id)) });
+});
+
+app.post('/api/docs/:id/share', requireUser, (req, res) => {
+  const d = loadDoc(req, res, { owner: true });
+  if (!d) return;
+  if (d.status !== 'ready') return res.status(400).json({ error: '자료 정리가 끝난 뒤에 공유할 수 있어요.' });
+  const items = SHARE_ITEMS.filter((k) => Array.isArray(req.body?.items) && req.body.items.includes(k));
+  if (!items.length) return res.status(400).json({ error: '공유할 항목을 하나 이상 골라 주세요.' });
+  const cur = activeShare(d.id);
+  if (cur) run('UPDATE shares SET items_json = ? WHERE token = ?', JSON.stringify(items), cur.token);
+  else run('INSERT INTO shares (token, doc_id, user_id, items_json, created_at) VALUES (?, ?, ?, ?, ?)', crypto.randomBytes(18).toString('base64url'), d.id, req.user!.id, JSON.stringify(items), nowIso());
+  // 받은 사람이 빈 화면을 보지 않게, 아직 안 만든 학습 자료는 주인 계정으로 지금 만든다
+  for (const k of items) if ((MATERIAL_KINDS as readonly string[]).includes(k)) ensureMaterial(d.id, k as MaterialKind, req.user!.id);
+  res.json({ share: shareView(activeShare(d.id)) });
+});
+
+app.delete('/api/docs/:id/share', requireUser, (req, res) => {
+  const d = loadDoc(req, res, { owner: true });
+  if (!d) return;
+  run('UPDATE shares SET revoked_at = ? WHERE doc_id = ? AND revoked_at IS NULL', nowIso(), d.id);
+  res.json({ ok: true });
+});
+
+/** 토큰으로 공유 문서를 찾는다. 끊긴 링크, 휴지통 문서, 정리 안 된 문서는 없는 것으로 본다. */
+function loadShared(req: Request, res: Response, item?: string) {
+  const token = String(req.params.token ?? '');
+  const s = /^[A-Za-z0-9_-]{20,40}$/.test(token) ? one('SELECT * FROM shares WHERE token = ? AND revoked_at IS NULL', token) : undefined;
+  const d = s && one("SELECT * FROM documents WHERE id = ? AND deleted_at IS NULL AND status = 'ready'", s.doc_id);
+  const items: string[] = s ? JSON.parse(s.items_json) : [];
+  if (!s || !d || (item && !items.includes(item))) {
+    res.status(404).json({ error: '링크가 끊겼거나 볼 수 없는 자료예요.' });
+    return null;
+  }
+  return { d, items };
+}
+
+app.get('/api/share/:token', (req, res) => {
+  const r = loadShared(req, res);
+  if (!r) return;
+  res.json({ id: r.d.id, kind: r.d.kind, title: r.d.title, createdAt: r.d.created_at, durationSec: r.d.duration_sec, pageCount: r.d.page_count, items: r.items });
+});
+
+app.get('/api/share/:token/materials/:kind', (req, res) => {
+  const r = loadShared(req, res, req.params.kind);
+  if (!r) return;
+  const m = getMaterial(r.d.id, req.params.kind as MaterialKind);
+  if (!m) return res.json({ status: 'error', json: null, error: '아직 만들어지지 않은 자료예요.' });
+  res.json({ status: m.status, json: m.json ? JSON.parse(m.json) : null, error: m.error ?? null });
+});
+
+app.get('/api/share/:token/sets/:kind', (req, res) => {
+  const r = loadShared(req, res, req.params.kind);
+  if (!r) return;
+  res.json({ sets: listSets(r.d.id, req.params.kind as SetKind).filter((s) => s.status === 'ready').map(parseSet) });
 });
 
 app.post('/api/docs/:id/materials/:kind/regenerate', requireUser, (req, res) => {

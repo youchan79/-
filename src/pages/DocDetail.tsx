@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Brain, Columns2, Layers, ListChecks, Loader2, MessageCircle, NotebookPen, PanelLeftOpen, Sparkles, TextQuote, Workflow } from 'lucide-react';
+import { ArrowLeft, Brain, Columns2, Share2, Layers, ListChecks, Loader2, MessageCircle, NotebookPen, PanelLeftOpen, Sparkles, TextQuote, Workflow } from 'lucide-react';
 import { api, type DocDetail as Doc, type MindNode } from '../lib/api.ts';
 import { useApp } from '../lib/app.tsx';
 import { useMaterial, usePoll } from '../lib/hooks.ts';
@@ -10,6 +10,7 @@ import { MindMap } from '../components/MindMap.tsx';
 import { Button, IconButton, Loading } from '../components/ui.tsx';
 import { SourcePane, type SourceHandle } from './doc/SourcePane.tsx';
 import { Recorder } from './doc/Recorder.tsx';
+import { ShareModal } from './doc/ShareModal.tsx';
 import { ConceptsTab, Generating, MaterialError, MemoTab, MemorizeTab, SummaryTab } from './doc/tabs.tsx';
 import { FlashcardsTab, QuizTab } from './doc/sets.tsx';
 
@@ -28,7 +29,7 @@ type Tab = (typeof TABS)[number][0] | 'source';
 /** 폰에서는 레퍼런스처럼 원문이 첫 탭이다 */
 const SOURCE_LABEL: Record<Doc['kind'], string> = { pdf: 'PDF', docx: 'Word', pptx: 'PPT', youtube: '영상', audio: '녹음', image: '사진', memo: '원문' };
 
-function MindmapTab({ doc }: { doc: Doc }) {
+export function MindmapTab({ doc }: { doc: Doc }) {
   const m = useMaterial<{ root: MindNode }>(doc.id, 'mindmap');
   if (m.status === 'error') return <MaterialError message={m.error} />;
   if (!m.data) return <Generating label="AI가 마인드맵을 그리고 있어요" />;
@@ -148,6 +149,7 @@ export default function DocDetail({ id, search }: { id: string; search: string }
   );
   const [showSource, setShowSource] = useState(true);
   const [focus, setFocus] = useState<{ kind: 'quiz' | 'flashcards'; name: string; n: number } | null>(null);
+  const [sharing, setSharing] = useState(false);
   const source = useRef<SourceHandle>(null);
 
   const load = useCallback(async () => {
@@ -223,6 +225,12 @@ export default function DocDetail({ id, search }: { id: string; search: string }
             <Button size="sm" onClick={() => openLogin()}>
               로그인
             </Button>
+          )}
+          {!doc.readOnly && ready && (
+            <button type="button" onClick={() => setSharing(true)} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[15px] text-sub hover:bg-soft hover:text-ink" aria-label="공유">
+              <Share2 size={17} />
+              <span className="hidden sm:inline">공유</span>
+            </button>
           )}
           {desktop && (
             <IconButton onClick={() => setShowSource((s) => !s)} aria-label="원문 패널">
@@ -308,6 +316,7 @@ export default function DocDetail({ id, search }: { id: string; search: string }
           </section>
         </div>
       </div>
+      {sharing && <ShareModal doc={doc} onClose={() => setSharing(false)} />}
     </AppShell>
   );
 }

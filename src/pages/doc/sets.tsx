@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronRight, Flag, Plus, RotateCcw, X } from 'lucide-react';
 import { api, type Card, type DocDetail, type QuizQ, type StudySet } from '../../lib/api.ts';
 import { useApp } from '../../lib/app.tsx';
-import { usePoll, useProgress } from '../../lib/hooks.ts';
+import { useDocApi, usePoll, useProgress } from '../../lib/hooks.ts';
 import { RefChip, inline } from '../../lib/markdown.tsx';
 import { useApiErrorHandler } from '../../components/Modals.tsx';
 import { Button, Modal, Segmented } from '../../components/ui.tsx';
@@ -11,12 +11,13 @@ import { Generating, MaterialError } from './tabs.tsx';
 type Kind = 'quiz' | 'flashcards';
 
 function useSets<T>(doc: DocDetail, kind: Kind) {
+  const base = useDocApi(doc.id);
   const [sets, setSets] = useState<StudySet<T>[] | null>(null);
   const load = useCallback(async () => {
-    const r = await api<{ sets: StudySet<T>[] }>(`/api/docs/${doc.id}/sets/${kind}`);
+    const r = await api<{ sets: StudySet<T>[] }>(`${base}/sets/${kind}`);
     setSets(r.sets);
     return r.sets;
-  }, [doc.id, kind]);
+  }, [base, kind]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -329,6 +330,7 @@ export function QuizTab({ doc, onRef, focusRequest }: { doc: DocDetail; onRef: (
   if (open?.status === 'error') return <MaterialError message={open.error} onRetry={() => setOpenId(null)} />;
   if (open?.data) return <QuizPlayer key={open.id} set={open as any} onHome={() => setOpenId(null)} onRef={onRef} />;
   if (sets.length === 0) {
+    if (doc.readOnly) return <MaterialError message="아직 만든 퀴즈가 없어요." />;
     return me?.user ? <Generating label="AI가 퀴즈를 만들고 있어요" /> : <MaterialError message="로그인하면 퀴즈를 만들 수 있어요." />;
   }
   return (
@@ -504,6 +506,7 @@ export function FlashcardsTab({ doc, onRef, focusRequest }: { doc: DocDetail; on
   if (open?.status === 'error') return <MaterialError message={open.error} onRetry={() => setOpenId(null)} />;
   if (open?.data) return <CardPlayer key={open.id} set={open as any} onHome={() => setOpenId(null)} onRef={onRef} />;
   if (sets.length === 0) {
+    if (doc.readOnly) return <MaterialError message="아직 만든 플래시카드가 없어요." />;
     return me?.user ? <Generating label="AI가 플래시카드를 만들고 있어요" /> : <MaterialError message="로그인하면 플래시카드를 만들 수 있어요." />;
   }
   return (

@@ -204,6 +204,16 @@ db.exec(`CREATE TABLE IF NOT EXISTS folders (
 db.exec('CREATE INDEX IF NOT EXISTS idx_folders_user ON folders(user_id)');
 addColumn('documents', 'folder_id', 'TEXT');
 addColumn('documents', 'favorite_at', 'TEXT');
+// 공유 링크: 추측하기 어려운 토큰 하나 = 문서 하나. 끊으면 revoked_at, 문서를 완전히 지우면 같이 지운다.
+db.exec(`CREATE TABLE IF NOT EXISTS shares (
+  token TEXT PRIMARY KEY,
+  doc_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  items_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_shares_doc ON shares(doc_id)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_payments_rebill ON payments(rebill_no)');
 
 export type Row = Record<string, any>;

@@ -459,6 +459,7 @@ export function purgeTrash() {
 export function deleteDoc(docId: string) {
   fs.rmSync(path.join(uploadsDir, docId), { recursive: true, force: true });
   run('DELETE FROM chats WHERE doc_id = ?', docId);
+  run('DELETE FROM shares WHERE doc_id = ?', docId);
   run('DELETE FROM documents WHERE id = ?', docId);
 }
 
