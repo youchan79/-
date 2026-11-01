@@ -132,7 +132,7 @@ function Subscription() {
   return (
     <>
       <ProCard />
-      <Row label="현재 플랜" sub={pro ? planStatusText(sub) : undefined}>
+      <Row label="현재 플랜" sub={pro && (sub.canceled || sub.plan === 'lifetime') ? planStatusText(sub) : undefined}>
         <span className="text-[14px] font-medium">{pro ? planLabel(sub.plan) : '기본 플랜'}</span>
       </Row>
       {pro && sub.plan !== 'lifetime' && (

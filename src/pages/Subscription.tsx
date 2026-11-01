@@ -92,7 +92,7 @@ function CheckoutSheet({ period, onClose, onSubmit, busy }: { period: Period | n
       <div className="mt-4 text-[14px] text-sub">결제 수단</div>
       <div className="mt-2 flex items-center gap-2 rounded-full bg-solid px-4 py-2.5 text-[14px] font-medium text-on-solid">
         <CreditCard size={16} /> {monthly ? '신용·체크카드' : '신용·체크카드 · 간편결제'}
-        <span className="ml-auto text-[12px] font-normal opacity-70">페이앱 결제창에서 입력</span>
+        <span className="ml-auto text-[13px] font-normal opacity-70">페이앱 결제창에서 입력</span>
       </div>
       <label className="mt-4 block text-[14px] text-sub" htmlFor="pay-phone">
         휴대폰 번호 <span className="text-muted">(결제창에 필요해요, 광고 문자는 보내지 않아요)</span>
@@ -127,23 +127,26 @@ function CheckoutSheet({ period, onClose, onSubmit, busy }: { period: Period | n
         )}
         <li>· 결제 후 7일 이내이고 유료 기능을 쓰지 않았다면 전액 환불돼요.</li>
       </ul>
-      <p className="mt-4 text-center text-[13px] text-muted">
-        결제하면{' '}
-        <a href="/refund-policy" target="_blank" className="font-medium text-sub underline">
-          환불 정책
-        </a>
-        과{' '}
-        <a href="/terms" target="_blank" className="font-medium text-sub underline">
-          이용약관
-        </a>
-        에 동의한 것으로 봐요.
-      </p>
-      <Button size="lg" className="mt-3 w-full" disabled={!valid || busy} onClick={() => onSubmit(digits)}>
-        {busy ? <Spinner className="h-4 w-4" /> : `${won(price)} 결제하기`}
-      </Button>
-      <p className="mt-3 flex items-center justify-center gap-1.5 text-[12px] text-muted">
-        <Lock size={13} /> 페이앱 결제창에서 암호화해 안전하게 결제돼요
-      </p>
+      {/* 폰에서 내용이 길어도 결제 버튼은 늘 보이게 아래에 붙인다 */}
+      <div className="sticky -bottom-6 -mx-6 -mb-6 mt-4 border-t border-line bg-canvas px-6 pb-6 pt-3">
+        <p className="text-center text-[13px] text-muted">
+          결제하면{' '}
+          <a href="/refund-policy" target="_blank" className="font-medium text-sub underline">
+            환불 정책
+          </a>
+          과{' '}
+          <a href="/terms" target="_blank" className="font-medium text-sub underline">
+            이용약관
+          </a>
+          에 동의한 것으로 봐요.
+        </p>
+        <Button size="lg" className="mt-3 w-full" disabled={!valid || busy} onClick={() => onSubmit(digits)}>
+          {busy ? <Spinner className="h-4 w-4" /> : `${won(price)} 결제하기`}
+        </Button>
+        <p className="mt-3 flex items-center justify-center gap-1.5 text-[13px] text-muted">
+          <Lock size={13} /> 페이앱 결제창에서 암호화해 안전하게 결제돼요
+        </p>
+      </div>
     </Modal>
   );
 }
