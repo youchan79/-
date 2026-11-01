@@ -438,14 +438,14 @@ function ShowcaseList() {
 /** 레퍼런스의 가입자 수 자리: 근거 있는 상품 사실만 쓴다 */
 function HeroNote() {
   const { config } = useApp();
-  const price = config ? config.plans.lifetime.price.toLocaleString('ko-KR') : '9,900';
+  const price = config ? config.plans.monthly.price.toLocaleString('ko-KR') : '9,900';
   return (
     <div className="mt-6 flex items-center justify-center gap-2 text-[14px] text-muted">
       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-soft text-blue">
         <Sparkles size={13} />
       </span>
       <span>
-        <b className="font-semibold text-ink">{price}원 한 번 결제로 평생 무제한</b> · 강의 녹음은 무료로 계속
+        <b className="font-semibold text-ink">무료로 시작, Pro는 월 {price}원</b> · 강의 녹음은 무료로 계속
       </span>
     </div>
   );
@@ -642,7 +642,7 @@ export default function Landing() {
         <div className="gradient-panel rounded-[28px] px-6 py-16 text-center text-[#111] md:py-20">
           <h2 className="text-[30px] font-normal tracking-[-0.03em] md:text-[36px] md:font-medium">오늘 수업부터 바로 써 보세요</h2>
           <p className="mx-auto mt-3 max-w-[520px] text-[15px] text-[#2a2f4a]">
-            PDF와 영상을 요약하고 퀴즈·플래시카드로 복습하세요. 딱 한 번 {config ? config.plans.lifetime.price.toLocaleString('ko-KR') : '9,900'}원이면 평생 무제한, 매달 나가는 구독료가 없어요.
+            PDF와 영상을 요약하고 퀴즈·플래시카드로 복습하세요. 기본 플랜은 무료이고, 무제한 Pro는 월 {config ? config.plans.monthly.price.toLocaleString('ko-KR') : '9,900'}원이에요. 언제든 해지할 수 있어요.
           </p>
           <Button size="lg" className="mt-8 !bg-[#111] !text-white" onClick={() => navigate('/home')}>
             지금 시작하기

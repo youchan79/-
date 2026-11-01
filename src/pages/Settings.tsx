@@ -4,6 +4,7 @@ import { api, formatDate, formatRenew, won } from '../lib/api.ts';
 import { useApp } from '../lib/app.tsx';
 import { Link, navigate } from '../lib/router.tsx';
 import { useApiErrorHandler } from '../components/Modals.tsx';
+import { CancelSubscription, planLabel, planStatusText } from './Subscription.tsx';
 import { Button, IconButton, Segmented } from '../components/ui.tsx';
 
 type Tab = 'general' | 'account' | 'subscription' | 'ai' | 'feedback';
@@ -127,28 +128,37 @@ function Subscription() {
   if (!config) return null;
   const sub = me?.sub;
   const u = me?.usage;
+  const pro = sub?.pro;
   return (
     <>
       <ProCard />
-      <Row label="현재 플랜" sub={sub?.pro ? `${sub.purchasedAt ? formatDate(sub.purchasedAt) + ' 결제 · ' : ''}추가 결제 없음` : undefined}>
-        <span className="text-[14px] font-medium">{sub?.pro ? 'Pro 평생 이용권' : '기본 플랜'}</span>
+      <Row label="현재 플랜" sub={pro ? planStatusText(sub) : undefined}>
+        <span className="text-[14px] font-medium">{pro ? planLabel(sub.plan) : '기본 플랜'}</span>
       </Row>
-      {sub?.pro && (
-        <Row label="결제 금액">
-          <span className="text-[14px] text-sub">{won(sub.amount ?? 0)}</span>
+      {pro && sub.plan !== 'lifetime' && (
+        <Row label={sub.autoRenew ? '다음 결제' : '이용 기간'}>
+          <span className="text-[14px] text-sub">
+            {sub.autoRenew ? `${formatDate(sub.periodEnd!)} · ${won(sub.amount ?? 0)}` : `${formatDate(sub.periodEnd!)}까지`}
+          </span>
         </Row>
       )}
-      {u && !sub?.pro && (
+      {pro && sub.purchasedAt && (
+        <Row label="최근 결제">
+          <span className="text-[14px] text-sub">{formatDate(sub.purchasedAt)}</span>
+        </Row>
+      )}
+      {u && !pro && (
         <Row label="이번 주 남은 횟수" sub={`${formatRenew(u.renewAt)}에 갱신`}>
           <span className="text-[14px] text-sub">
             PDF {Math.max(0, config.free.weeklyFiles - u.files)} · 유튜브 {Math.max(0, config.free.weeklyYoutube - u.youtube)}
           </span>
         </Row>
       )}
-      <div className="pt-5">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 pt-5">
         <Button variant="outline" onClick={() => navigate('/subscription')}>
-          이용권 보기
+          구독 관리
         </Button>
+        <CancelSubscription />
       </div>
     </>
   );

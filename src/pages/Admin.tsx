@@ -25,6 +25,9 @@ interface DayRow {
 interface Stats {
   days: DayRow[];
   pro: number;
+  proMonthly: number;
+  proYearly: number;
+  proCanceled: number;
   unitCost: Array<{ kind: string; n: number; avg_cost: number }>;
 }
 
@@ -111,7 +114,7 @@ export default function Admin() {
       <h1 className="px-1 pb-4 text-[24px] font-bold tracking-tight">매출과 퍼널</h1>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         <Big label="최근 7일 실제 결제 매출" value={won(rev7)} sub="오늘 포함, KST 기준" />
-        <Big label="Pro 이용자" value={`${stats.pro}명`} />
+        <Big label="Pro 이용자" value={`${stats.pro}명`} sub={`월간 ${stats.proMonthly} · 연간 ${stats.proYearly} · 해지 예약 ${stats.proCanceled}`} />
         <Big label="요약 1건 평균 AI 원가" value={unit('summary')} sub={`자료 읽기 ${unit('extract_pdf')}`} />
         <Big label="튜터 1회 평균 AI 원가" value={unit('tutor')} sub={`퀴즈 1세트 ${unit('quiz')}`} />
       </div>

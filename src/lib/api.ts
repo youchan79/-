@@ -4,7 +4,7 @@ export type MaterialKind = 'summary' | 'mindmap' | 'memorize' | 'concepts';
 export interface AppConfig {
   serviceName: string;
   pixelId: string | null;
-  plans: { lifetime: { name: string; price: number } };
+  plans: { monthly: { name: string; price: number }; yearly: { name: string; price: number } };
   media: { audioFile: boolean; youtubeAuto: boolean };
   free: { weeklyFiles: number; weeklyYoutube: number; dailyTutor: number; weeklyExams: number; maxFileMb: number };
   paymentProvider: 'payapp' | 'mock' | 'none';
@@ -14,9 +14,13 @@ export interface AppConfig {
 
 export interface SubView {
   pro: boolean;
-  plan: 'lifetime' | null;
-  status: string | null;
+  plan: 'monthly' | 'yearly' | 'lifetime' | null; // lifetime: 예전에 판매한 상품
+  status: 'active' | 'canceled' | 'expired' | null;
   amount: number | null;
+  /** 월간 자동 결제 중이면 다음 결제일, 아니면 Pro가 끝나는 날 */
+  periodEnd: string | null;
+  canceled: boolean;
+  autoRenew: boolean;
   purchasedAt: string | null;
 }
 
@@ -131,13 +135,28 @@ export function kst(iso: string) {
   return new Date(new Date(iso).getTime() + 9 * 3600_000);
 }
 
+/** 무료 횟수 갱신 시각: "11월 2일 (월) 0시" */
 export function formatRenew(iso: string) {
   const d = kst(iso);
   const day = '일월화수목금토'[d.getUTCDay()];
   const h = d.getUTCHours();
+  if (h === 0 && d.getUTCMinutes() === 0) return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 (${day}) 0시`;
   const ampm = h < 12 ? '오전' : '오후';
   const hh = String(h % 12 === 0 ? 12 : h % 12).padStart(2, '0');
   return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일 (${day}) ${ampm} ${hh}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+}
+
+/** 다음 월요일 0시(한국 시간). 로그인 전에도 무료 횟수 갱신일을 보여 줄 때 쓴다. */
+export function nextWeeklyReset(now = new Date()) {
+  const k = kst(now.toISOString());
+  const toMonday = 7 - ((k.getUTCDay() + 6) % 7);
+  return new Date(Date.UTC(k.getUTCFullYear(), k.getUTCMonth(), k.getUTCDate() + toMonday) - 9 * 3600_000).toISOString();
+}
+
+/** "2026년 12월 1일" */
+export function formatDay(iso: string) {
+  const d = kst(iso);
+  return `${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`;
 }
 
 export function formatDate(iso: string) {
