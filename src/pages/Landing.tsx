@@ -42,21 +42,21 @@ const MINI_TABS = ['요약', '퀴즈', '플래시카드', '마인드맵', '암�
 
 function MiniSlide() {
   return (
-    <div className="space-y-3 p-4 text-[#111]">
+    <div className="space-y-3 p-2 break-keep text-[#111] md:p-4">
       {[
         { n: '01', t: '다중 저장 모형', s: 'Atkinson & Shiffrin, 1968' },
         { n: '02', t: '망각 곡선', s: 'Ebbinghaus, 1885' },
       ].map((p) => (
-        <div key={p.n} className="rounded-md border border-[#e7e7e7] bg-white p-4">
+        <div key={p.n} className="rounded-md border border-[#e7e7e7] bg-white p-2.5 md:p-4">
           <div className="flex items-start justify-between">
             <div>
               <div className="text-[9px] text-[#999]">인지심리학 6주차</div>
-              <div className="mt-1 text-[14px] font-semibold">{p.t}</div>
+              <div className="mt-1 text-[12px] font-semibold leading-snug md:text-[14px]">{p.t}</div>
               <div className="text-[9px] text-[#999]">{p.s}</div>
             </div>
-            <div className="text-[34px] font-bold leading-none text-[#e9e9e9]">{p.n}</div>
+            <div className="text-[22px] font-bold leading-none text-[#e9e9e9] md:text-[34px]">{p.n}</div>
           </div>
-          <div className="mt-3 grid grid-cols-3 gap-2 border-t border-[#222] pt-2 text-[9px]">
+          <div className="mt-3 grid grid-cols-3 gap-x-1 gap-y-1 border-t border-[#222] pt-2 text-[9px] leading-tight md:gap-2">
             <span className="font-semibold">감각 기억</span>
             <span className="font-semibold">단기 기억</span>
             <span className="font-semibold">장기 기억</span>
