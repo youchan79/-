@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ChevronLeft, CreditCard, Search, Send, Settings as Cog, SlidersHorizontal, User } from 'lucide-react';
+import { ChevronLeft, CreditCard, LogOut, Search, Send, Settings as Cog, SlidersHorizontal, User } from 'lucide-react';
 import { api, formatDate, formatRenew, won } from '../lib/api.ts';
+import { FeedbackModal } from '../components/AppShell.tsx';
 import { useApp } from '../lib/app.tsx';
 import { Link, navigate } from '../lib/router.tsx';
 import { useApiErrorHandler } from '../components/Modals.tsx';
@@ -75,50 +76,49 @@ function Account() {
       </div>
     );
   }
+  const via: Record<string, string> = { google: 'Google', kakao: '카카오', naver: '네이버' };
   return (
     <>
-      <Row label="이메일">
-        <span className="text-[14px] text-sub">{me.user.email}</span>
-      </Row>
-      <Row label="휴대폰" sub="결제할 때 페이앱에 전달돼요">
-        <span className="text-[14px] text-sub">{me.user.phone ? me.user.phone.replace(/(\d{3})(\d{3,4})(\d{4})/, '$1-$2-$3') : '없음'}</span>
-      </Row>
-      <Row label="가입일">
-        <span className="text-[14px] text-sub">{formatDate(me.user.createdAt)}</span>
-      </Row>
-      <Row label="로그아웃">
+      <div className="flex items-center gap-3 py-4">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-solid text-[18px] font-semibold text-on-solid">
+          {(me.user.name || me.user.email)[0].toUpperCase()}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[15px] font-medium">{me.user.name || me.user.email}</div>
+          <div className="mt-0.5 truncate text-[14px] text-sub">
+            {me.user.provider && <span className="mr-1.5 rounded bg-soft-2 px-1.5 py-px text-[13px] text-muted">{via[me.user.provider]}</span>}
+            {me.user.email}
+          </div>
+        </div>
         <Button
           size="sm"
-          variant="outline"
+          className="shrink-0"
           onClick={async () => {
             await api('/api/auth/logout', {});
             await refreshMe();
             navigate('/home');
           }}
         >
-          로그아웃
+          <LogOut size={15} /> 로그아웃
         </Button>
-      </Row>
-      <Row label="회원 탈퇴" sub="올린 자료와 학습 기록이 모두 지워져요">
-        <Button
-          size="sm"
-          variant="ghost"
-          className="!text-red"
-          onClick={async () => {
-            if (!window.confirm('정말 탈퇴할까요? 올린 자료와 학습 기록은 되돌릴 수 없어요.')) return;
-            try {
-              await api('/api/account/delete', {});
-              await refreshMe();
-              showToast('탈퇴했어요. 그동안 고마웠어요.');
-              navigate('/');
-            } catch (e) {
-              onError(e);
-            }
-          }}
-        >
-          탈퇴하기
-        </Button>
-      </Row>
+      </div>
+      <button
+        type="button"
+        className="mt-2 text-[14px] text-muted underline underline-offset-4 hover:text-red"
+        onClick={async () => {
+          if (!window.confirm('정말 탈퇴할까요? 올린 자료와 학습 기록은 모두 지워지고 되돌릴 수 없어요.')) return;
+          try {
+            await api('/api/account/delete', {});
+            await refreshMe();
+            showToast('탈퇴했어요. 그동안 고마웠어요.');
+            navigate('/');
+          } catch (e) {
+            onError(e);
+          }
+        }}
+      >
+        회원 탈퇴
+      </button>
     </>
   );
 }
@@ -189,29 +189,14 @@ function AiSettings() {
 }
 
 function Feedback() {
-  const { showToast } = useApp();
-  const [text, setText] = useState('');
+  const [open, setOpen] = useState(false);
   return (
-    <div className="pt-2">
-      <p className="text-[14px] text-sub">바라는 기능이나 불편한 점을 알려 주세요. 모두 읽고 있어요.</p>
-      <textarea
-        rows={8}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        className="mt-4 w-full resize-none rounded-2xl border border-line bg-canvas p-4 text-[15px] outline-none focus:border-ink"
-        placeholder="예: 플래시카드를 PDF로 뽑고 싶어요"
-      />
-      <Button
-        className="mt-3"
-        disabled={!text.trim()}
-        onClick={async () => {
-          await api('/api/feedback', { text });
-          setText('');
-          showToast('보내 주셔서 고마워요.');
-        }}
-      >
-        보내기
+    <div className="pt-4">
+      <p className="text-[15px] leading-[1.7] text-sub">쓰다가 막힌 곳, 있었으면 하는 기능, 이상하게 동작한 부분 무엇이든 적어 주세요. 하나하나 읽고 다음 업데이트에 반영할게요.</p>
+      <Button className="mt-4" onClick={() => setOpen(true)}>
+        <Send size={16} /> 의견 보내기
       </Button>
+      <FeedbackModal open={open} onClose={() => setOpen(false)} />
     </div>
   );
 }
@@ -243,6 +228,10 @@ export default function Settings({ search }: { search: string }) {
               <button
                 key={t}
                 type="button"
+                // 폰에서 가로로 넘기는 탭 줄: 고른 탭이 화면 밖에 있으면 보이게
+                ref={(el) => {
+                  if (el && tab === t) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                }}
                 onClick={() => setTab(t)}
                 className={`flex h-10 shrink-0 items-center gap-2.5 rounded-lg px-3 text-[15px] ${tab === t ? 'bg-soft' : 'text-sub hover:bg-soft/70'}`}
               >
