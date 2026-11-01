@@ -10,7 +10,7 @@ import { Button, Modal, Spinner } from '../components/ui.tsx';
 type Period = 'monthly' | 'yearly';
 
 const FEATURES = [
-  { icon: FileStack, title: 'PDF·유튜브 무제한 업로드 분석', sub: '시험 기간에 자료가 몰려도 횟수를 기다리지 않고 바로 정리해요.' },
+  { icon: FileStack, title: 'PDF·유튜브 횟수 제한 없이 분석', sub: '시험 기간에 자료가 몰려도 횟수를 기다리지 않고 바로 정리해요.' },
   { icon: BookOpen, title: 'AI 요약', sub: '자료의 흐름대로 핵심을 정리하고, 어려운 부분은 쉬운 설명을 붙여 드려요.' },
   { icon: ListChecks, title: 'AI 퀴즈', sub: '자료로 연습 문제를 만들고, 해설로 헷갈리는 개념을 바로잡아요.' },
   { icon: Layers, title: 'AI 플래시카드', sub: '핵심 개념을 카드로 만들어 내 속도에 맞춰 반복해요.' },
@@ -356,9 +356,9 @@ export default function Subscription({ search }: { search: string }) {
               ) : (
                 <>
                   <Button size="lg" className="mt-8 w-full" disabled={busy || config.paymentProvider === 'none'} onClick={() => start(period)}>
-                    무제한으로 시작하기
+                    Pro로 마음껏 쓰기
                   </Button>
-                  <p className="mt-2.5 text-center text-[13px] text-muted">{period === 'monthly' ? '언제든 해지할 수 있어요' : '1년치를 한 번에 결제해요 · 자동 결제 없음'}</p>
+                  <p className="mt-2.5 text-center text-[13px] text-muted">{period === 'monthly' ? '해지는 언제든 할 수 있어요' : '1년치를 한 번에 결제해요 · 자동 결제 없음'}</p>
                   {config.paymentProvider === 'mock' && <p className="mt-1 text-center text-[12px] text-blue">개발 모드: 가짜 결제창으로 연결돼요</p>}
                 </>
               )}

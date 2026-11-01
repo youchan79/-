@@ -370,11 +370,11 @@ export function LoginModal() {
 }
 
 export const PRO_FEATURES = [
-  'PDF·유튜브 무제한 업로드 분석',
-  '요약·퀴즈·플래시카드 등 학습 자료 6종 무제한 생성',
-  'AI 튜터 무제한 질문',
-  '긴 강의 녹음 파일도 1GB까지 업로드',
-  '모든 학습 자료 클라우드 자동 백업',
+  'PDF·유튜브 올리고 분석하기, 횟수 제한 없음',
+  '요약·퀴즈·플래시카드 등 학습 자료 6종을 마음껏 만들기',
+  'AI 튜터에게 횟수 걱정 없이 질문',
+  '1GB짜리 긴 강의 녹음 파일도 올리기',
+  '만든 학습 자료는 클라우드에 자동 보관',
 ];
 
 export function UpgradeModal() {
@@ -408,9 +408,9 @@ export function UpgradeModal() {
             navigate('/subscription');
           }}
         >
-          무제한으로 시작하기
+          Pro로 마음껏 쓰기
         </Button>
-        <p className="mt-2 text-center text-[13px] text-muted">언제든 해지할 수 있어요</p>
+        <p className="mt-2 text-center text-[13px] text-muted">해지는 언제든 할 수 있어요</p>
       </div>
     </Modal>
   );
