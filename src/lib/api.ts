@@ -47,7 +47,7 @@ export interface DocSummary {
   kind: DocKind;
   title: string;
   thumb: string | null;
-  status: 'processing' | 'ready' | 'error';
+  status: 'recording' | 'processing' | 'ready' | 'error';
   error: string | null;
   durationSec: number | null;
   pageCount: number | null;

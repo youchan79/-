@@ -125,6 +125,39 @@ export function createFileDoc(p: {
   return id;
 }
 
+/** 강의 녹음: 누르자마자 빈 문서를 만들고(status = recording), 그 문서 화면에서 녹음한다. */
+export function createRecordingDoc(userId: string) {
+  const id = newId('doc');
+  const now = nowIso();
+  run(
+    `INSERT INTO documents (id, user_id, kind, title, status, created_at, updated_at)
+     VALUES (?, ?, 'audio', '새 강의 녹음', 'recording', ?, ?)`,
+    id,
+    userId,
+    now,
+    now,
+  );
+  return id;
+}
+
+/** 녹음을 끝내면 녹음 파일과 실시간 자막을 문서에 붙이고 정리를 시작한다. */
+export function attachRecording(p: { docId: string; userId: string; file: IncomingFile; durationSec: number | null; liveTranscript: string | null }) {
+  const stored = storeFiles(p.docId, [p.file]);
+  run(
+    `UPDATE documents SET file_name = ?, file_path = ?, mime = ?, size = ?, duration_sec = ?, source_text = ?, status = 'processing', error = NULL, updated_at = ?
+     WHERE id = ?`,
+    p.file.originalname,
+    JSON.stringify(stored),
+    normalizeMime('audio', p.file.originalname, p.file.mimetype),
+    p.file.size,
+    p.durationSec,
+    p.liveTranscript,
+    nowIso(),
+    p.docId,
+  );
+  void processDoc(p.docId, p.userId);
+}
+
 export function parseYoutubeId(url: string): string | null {
   try {
     const u = new URL(url.trim());

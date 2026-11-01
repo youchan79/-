@@ -26,7 +26,9 @@ import { mediaSupport } from './media.ts';
 import {
   DocError,
   assertReadableImages,
+  attachRecording,
   createFileDoc,
+  createRecordingDoc,
   createMemoDoc,
   createSet,
   createYoutubeDoc,
@@ -453,6 +455,51 @@ app.post(
     const id = await createYoutubeDoc(req.user!.id, String(req.body?.url ?? ''), typeof req.body?.transcript === 'string' ? req.body.transcript : undefined);
     logFunnel('upload', req.anonId, req.user!.id);
     res.json({ id });
+  }),
+);
+
+app.post('/api/docs/recording', requireUser, (req, res) => {
+  const id = createRecordingDoc(req.user!.id);
+  res.json({ id });
+});
+
+app.post(
+  '/api/docs/:id/recording',
+  requireUser,
+  upload.array('files', 1),
+  h(async (req, res) => {
+    const files = (req.files as Express.Multer.File[]) ?? [];
+    try {
+      const d = loadDoc(req, res, { owner: true });
+      if (!d) return cleanupUploads(files);
+      // 녹음 대기 중이거나, 정리하다 실패한 녹음 문서에만 붙일 수 있다
+      if (d.kind !== 'audio' || !['recording', 'error'].includes(d.status) || (d.status === 'error' && d.file_path)) {
+        cleanupUploads(files);
+        return res.status(409).json({ error: '이미 녹음이 끝난 문서예요.' });
+      }
+      const f = files[0];
+      if (!f) return res.status(400).json({ error: '녹음 파일이 없어요.' });
+      if (detectKind(f.originalname, f.mimetype) !== 'audio') {
+        cleanupUploads(files);
+        return res.status(400).json({ error: '녹음 파일(mp3, m4a, wav, webm)만 올릴 수 있어요.' });
+      }
+      const limit = maxUploadBytes(req.user!.id);
+      if (f.size > limit) {
+        cleanupUploads(files);
+        return res.status(413).json({ error: `파일이 너무 커요. ${isPro(req.user!.id) ? '' : '무료 플랜은 '}${Math.round(limit / 1024 / 1024)}MB까지 올릴 수 있어요.`, reason: 'size' });
+      }
+      const transcript = typeof req.body?.transcript === 'string' && req.body.transcript.trim() ? req.body.transcript.slice(0, 200_000) : null;
+      if (!transcript && !mediaSupport.audioFile && aiMode !== 'mock') {
+        cleanupUploads(files);
+        return res.status(400).json({ error: '받아 적은 자막이 없어요. Chrome이나 삼성 인터넷에서 녹음하면 실시간 자막으로 정리돼요.' });
+      }
+      attachRecording({ docId: d.id, userId: req.user!.id, file: f, durationSec: Number(req.body?.duration) || null, liveTranscript: transcript });
+      logFunnel('upload', req.anonId, req.user!.id);
+      res.json({ ok: true });
+    } catch (e) {
+      cleanupUploads(files);
+      throw e;
+    }
   }),
 );
 
