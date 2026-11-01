@@ -1,6 +1,21 @@
 # 배포와 메타 픽셀 설정
 
-## 1. Railway에 올리기 (약 15분)
+## 1-A. Render에 올리기 (약 10분, 현재 기본)
+
+저장소의 `render.yaml`에 서버, 디스크, 환경 변수 구성이 들어 있어서 화면에서 값만 채우면 된다.
+
+1. https://render.com 에서 **GitHub로 가입**한다. 가입할 때 GitHub 저장소 접근을 물으면 `youchan79/-`을 허용한다.
+2. 대시보드 오른쪽 위 `New` → `Blueprint` → 저장소 `youchan79/-` 선택.
+   - 블루프린트는 `ccr-eed69f99-nfucy9` 브랜치를 배포한다. PR을 머지한 뒤에는 `render.yaml`의 `branch`를 `main`으로 바꾼다.
+3. 화면에 비어 있는 칸(`ANTHROPIC_API_KEY`, `PAYAPP_*` 4개, `BIZ_*` 5개)이 나오면 값을 넣고 `Apply`.
+   `SESSION_SECRET`, `ADMIN_KEY`는 Render가 자동으로 만든다.
+4. 결제 수단을 물으면 카드를 등록한다. Starter 인스턴스(월 7달러) + 디스크 1GB(월 0.25달러). 디스크가 없으면 재배포 때 데이터가 지워지므로 무료 인스턴스는 쓰지 않는다.
+5. 빌드가 끝나면 `https://studyai-xxxx.onrender.com` 같은 주소가 생긴다. `APP_URL`은 비워 두면 이 주소를 자동으로 쓴다.
+6. 관리자 비밀번호: 서비스 → `Environment` → `ADMIN_KEY` 값.
+
+자체 도메인은 서비스 → `Settings` → `Custom Domains`에서 붙이고, 붙인 뒤 `APP_URL`에 그 도메인을 넣는다.
+
+## 1-B. Railway에 올리기 (약 15분, 신규 가입이 열려 있을 때)
 
 Railway는 GitHub 저장소를 연결하면 자동으로 빌드하고 주소를 만들어 준다. 이 저장소에는 `Dockerfile`과 `railway.json`이 들어 있어서 따로 설정할 빌드 명령이 없다.
 
@@ -49,8 +64,8 @@ Railway는 GitHub 저장소를 연결하면 자동으로 빌드하고 주소를 
 
 1. https://business.facebook.com 에 들어가 비즈니스 포트폴리오를 만든다 (이미 있으면 건너뛴다).
 2. 왼쪽 메뉴 `이벤트 관리자`(Events Manager) → `데이터 소스 연결` → `웹` → 이름(예: 스터디AI) 입력 → `픽셀 만들기`.
-3. 웹사이트 주소를 물으면 Railway 주소를 넣고, 설치 방법은 `코드 직접 설치`를 골라 창을 닫는다. 코드는 이미 앱에 들어 있다.
-4. 데이터 소스 목록의 숫자 15~16자리가 **픽셀 ID**다. Railway 변수 `META_PIXEL_ID`에 넣는다.
+3. 웹사이트 주소를 물으면 배포한 사이트 주소를 넣고, 설치 방법은 `코드 직접 설치`를 골라 창을 닫는다. 코드는 이미 앱에 들어 있다.
+4. 데이터 소스 목록의 숫자 15~16자리가 **픽셀 ID**다. 배포 서비스의 환경 변수 `META_PIXEL_ID`에 넣는다.
 5. (권장) **전환 API 토큰**: 이벤트 관리자 → 방금 만든 픽셀 → `설정` 탭 → `전환 API` → `액세스 토큰 생성`. 나온 값을 `META_CAPI_TOKEN`에 넣는다. 브라우저 광고 차단이나 iOS에서 빠지는 구매를 서버가 대신 보낸다.
 6. **테스트**: 이벤트 관리자 → 픽셀 → `이벤트 테스트` 탭 → 테스트 코드(TEST12345 같은 값)를 `META_TEST_EVENT_CODE`에 잠깐 넣고, 사이트에서 가입 → 결제를 해 본다. `PageView`, `CompleteRegistration`, `InitiateCheckout`, `Purchase`가 들어오면 성공. 확인한 뒤 `META_TEST_EVENT_CODE`는 지운다.
 7. 광고는 `Purchase`(구매)를 전환 이벤트로 최적화한다. 결제가 아직 안 되면 처음 며칠은 `CompleteRegistration`(가입)으로 시작해도 된다.

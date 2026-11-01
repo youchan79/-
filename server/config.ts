@@ -27,7 +27,12 @@ const payapp = {
 export const config = {
   isProd,
   port: num('PORT', 3000),
-  appUrl: str('APP_URL').replace(/\/$/, ''),
+  // 호스팅이 알려 주는 공개 주소를 기본값으로 쓴다 (Render: RENDER_EXTERNAL_URL, Railway: RAILWAY_PUBLIC_DOMAIN)
+  appUrl: (
+    str('APP_URL') ||
+    str('RENDER_EXTERNAL_URL') ||
+    (str('RAILWAY_PUBLIC_DOMAIN') ? `https://${str('RAILWAY_PUBLIC_DOMAIN')}` : '')
+  ).replace(/\/$/, ''),
   dataDir: path.resolve(str('DATA_DIR', './data')),
   sessionSecret: str('SESSION_SECRET', isProd ? '' : 'dev-session-secret-change-me'),
   adminKey: str('ADMIN_KEY', isProd ? '' : 'dev-admin'),
