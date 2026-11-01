@@ -283,7 +283,7 @@ export function LoginModal() {
       <div className="flex flex-col items-center pb-2 pt-3 text-center">
         <Logo className="text-[28px]" />
         <h2 className="mt-4 text-[20px] font-semibold">{signup ? '나만의 학습 공간을 만드세요' : '다시 오신 걸 환영해요'}</h2>
-        <p className="mt-1.5 text-[14px] text-muted">로그인하면 만든 자료가 저장되고, 어디서나 이어서 공부할 수 있어요</p>
+        <p className="mt-1.5 text-[15px] text-muted">로그인해 두면 만든 자료가 계정에 남아서, 어느 기기에서든 이어서 볼 수 있어요</p>
       </div>
       {hasSocial && (
         <>

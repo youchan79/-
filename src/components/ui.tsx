@@ -102,9 +102,9 @@ export function Modal({
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onMouseDown={onClose}>
       <div
-        className={`relative max-h-[92dvh] w-full overflow-y-auto rounded-t-[24px] bg-canvas p-6 shadow-xl sm:rounded-[24px] ${className}`}
+        className={`relative max-h-[92dvh] w-full overflow-y-auto rounded-[24px] bg-canvas p-6 shadow-xl ${className}`}
         style={{ maxWidth: width }}
         onMouseDown={(e) => e.stopPropagation()}
       >
