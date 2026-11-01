@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronRight, ClipboardList, Clock, Copy, FileStack, ScrollText, Sparkles, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronLeft, ChevronRight, ClipboardList, Clock, Copy, FileStack, FileUp, FolderOpen, Plus, ScrollText, Sparkles, X } from 'lucide-react';
 import { api, formatDate, KIND_LABEL, type DocSummary } from '../lib/api.ts';
 import { useApp, useRequireLogin } from '../lib/app.tsx';
 import { usePoll, useProgress } from '../lib/hooks.ts';
 import { navigate } from '../lib/router.tsx';
+import { DOC_ACCEPT, IMAGE_ACCEPT, uploadFiles } from '../lib/upload.ts';
+import { UploadProgress } from './AddContent.tsx';
 import { AppShell } from '../components/AppShell.tsx';
 import { useApiErrorHandler } from '../components/Modals.tsx';
 import { Button, Loading, Modal, NewBadge, Segmented, Spinner } from '../components/ui.tsx';
@@ -45,86 +47,193 @@ function PaperIllustration() {
   );
 }
 
-function Builder({ open, onClose, mode }: { open: boolean; onClose: () => void; mode: 'mock' | 'variant' }) {
+/** 새 시험지 만들기 화면(원조처럼 모달이 아니라 한 화면): 시험 범위 담기 → 출제 설정 → 아래 막대의 만들기 버튼 */
+function Builder({ onClose, mode }: { onClose: () => void; mode: 'mock' | 'variant' }) {
   const onError = useApiErrorHandler();
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [count, setCount] = useState('20');
   const [minutes, setMinutes] = useState('40');
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState<number | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const max = mode === 'variant' ? 1 : 10;
 
+  const loadDocs = () => api<{ docs: DocSummary[] }>('/api/docs').then((r) => setDocs(r.docs.filter((d) => !d.isSample)));
   useEffect(() => {
-    if (!open) return;
-    setPicked([]);
-    api<{ docs: DocSummary[] }>('/api/docs').then((r) => setDocs(r.docs.filter((d) => !d.isSample && d.status === 'ready')));
-  }, [open]);
+    void loadDocs();
+  }, []);
+  const pickedDocs = picked.map((id) => docs?.find((d) => d.id === id)).filter((d): d is DocSummary => !!d);
+  const waiting = pickedDocs.some((d) => d.status === 'processing');
+  // 방금 올린 파일은 AI가 다 읽을 때까지 기다린다
+  usePoll(() => void loadDocs(), waiting, 2500);
 
-  const toggle = (id: string) =>
-    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : mode === 'variant' ? [id] : p.length >= 10 ? p : [...p, id]));
+  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : max === 1 ? [id] : p.length >= max ? p : [...p, id]));
+  const ready = picked.length > 0 && !waiting && pickedDocs.every((d) => d.status === 'ready');
+
+  const create = async () => {
+    setBusy(true);
+    try {
+      const r = await api<{ id: string }>('/api/exams', { docIds: picked, count: Number(count), durationMin: Number(minutes), mode });
+      navigate(`/exam/${r.id}`);
+    } catch (e) {
+      onError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
-    <Modal open={open} onClose={onClose} width={520}>
-      <h2 className="text-[20px] font-semibold">{mode === 'variant' ? '족보 변형 문제' : '시험 범위 고르기'}</h2>
-      <p className="mt-1 text-[14px] text-muted">
-        {mode === 'variant' ? '올려 둔 기출 시험지(족보)를 고르면 같은 개념의 새 문제로 바꿔 드려요.' : '강의자료·녹음·메모·영상을 최대 10개까지 고를 수 있어요.'}
-      </p>
-      <div className="mt-4 max-h-[300px] space-y-1.5 overflow-y-auto">
-        {docs === null ? (
-          <div className="flex justify-center py-8">
-            <Spinner />
-          </div>
-        ) : docs.length === 0 ? (
-          <div className="rounded-2xl bg-soft p-5 text-center text-[14px] text-sub">
-            먼저 자료를 올려 주세요.
-            <div>
-              <Button size="sm" className="mt-3" onClick={() => navigate('/add-content')}>
-                자료 올리기
-              </Button>
+    <div className="flex min-h-full flex-col">
+      <div className="mx-auto w-full max-w-[720px] flex-1 px-4 pb-8 md:px-6">
+        <div className="relative flex h-14 items-center justify-center">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute left-0 flex h-10 w-10 items-center justify-center rounded-full border border-line text-sub hover:bg-soft hover:text-ink"
+            aria-label="뒤로"
+          >
+            <ChevronLeft size={19} />
+          </button>
+          <span className="text-[16px] font-medium">{mode === 'variant' ? '족보 변형' : '새 시험지'}</span>
+        </div>
+        <h1 className="mt-4 text-[24px] font-medium tracking-[-0.02em] md:text-[28px]">
+          {mode === 'variant' ? '어떤 기출 시험지를 바꿔 볼까요?' : '어느 범위에서 문제를 낼까요?'}
+        </h1>
+        <p className="mt-1.5 text-[15px] leading-[1.6] text-sub">
+          {mode === 'variant' ? '예전 시험지(족보) 하나를 담으면 같은 개념을 묻는 새 문제로 바꿔 드려요.' : '시험에 나올 자료를 담고, 문항 수와 제한 시간을 정해 주세요.'}
+        </p>
+
+        <div className="mb-2 mt-7 px-1 text-[14px] text-muted">시험 범위</div>
+        <div className="rounded-2xl bg-soft p-4 md:p-5">
+          {pickedDocs.length > 0 && (
+            <div className="mb-4 space-y-2">
+              {pickedDocs.map((d, i) => (
+                <div key={d.id} className="flex items-center gap-3 rounded-xl bg-canvas px-4 py-3">
+                  <span className="w-5 shrink-0 text-[14px] text-muted">{ROMAN[i]}</span>
+                  <span className="min-w-0 flex-1 truncate text-[15px]">{d.title}</span>
+                  {d.status === 'processing' ? (
+                    <span className="flex shrink-0 items-center gap-1.5 text-[13px] text-muted">
+                      <Spinner className="h-3.5 w-3.5" /> 읽는 중
+                    </span>
+                  ) : (
+                    <span className="shrink-0 text-[13px] text-muted">{KIND_LABEL[d.kind]}</span>
+                  )}
+                  <button type="button" onClick={() => toggle(d.id)} className="shrink-0 text-muted hover:text-ink" aria-label="빼기">
+                    <X size={17} />
+                  </button>
+                </div>
+              ))}
             </div>
+          )}
+          <div className={`flex flex-col items-center text-center ${pickedDocs.length ? '' : 'py-6'}`}>
+            {pickedDocs.length === 0 && (
+              <>
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-solid text-on-solid">
+                  <Plus size={20} />
+                </span>
+                <div className="mt-3 text-[16px] font-medium">자료 담기</div>
+                <p className="mt-1 text-[14px] text-sub">{mode === 'variant' ? '기출 시험지 파일 하나를 담아 주세요' : `내 문서에서 고르거나 새로 올려 ${max}개까지 담아요`}</p>
+              </>
+            )}
+            {picked.length < max && (
+              <div className={`flex flex-wrap justify-center gap-2 ${pickedDocs.length ? '' : 'mt-4'}`}>
+                <Button size="sm" variant="outline" onClick={() => setPickerOpen(true)}>
+                  <FolderOpen size={16} /> 문서에서 고르기
+                </Button>
+                <Button size="sm" onClick={() => fileInput.current?.click()}>
+                  <FileUp size={16} /> 파일 올리기
+                </Button>
+              </div>
+            )}
           </div>
-        ) : (
-          docs.map((d) => {
-            const on = picked.includes(d.id);
-            return (
-              <button key={d.id} type="button" onClick={() => toggle(d.id)} className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left ${on ? 'border-ink' : 'border-line hover:bg-soft'}`}>
-                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${on ? 'border-solid bg-solid text-on-solid' : 'border-line'}`}>{on && <Check size={13} strokeWidth={3} />}</span>
-                <span className="min-w-0 flex-1 truncate text-[15px]">{d.title}</span>
-                <span className="shrink-0 text-[12px] text-muted">{KIND_LABEL[d.kind]}</span>
-              </button>
-            );
-          })
-        )}
-      </div>
-      <div className="mt-5 space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-[15px]">문항 수</span>
-          <Segmented value={count} onChange={setCount} options={[['10', '10문제'], ['20', '20문제'], ['30', '30문제']]} />
         </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[15px]">제한 시간</span>
-          <Segmented value={minutes} onChange={setMinutes} options={[['20', '20분'], ['40', '40분'], ['60', '60분']]} />
+
+        <div className="mb-2 mt-7 px-1 text-[14px] text-muted">출제 설정</div>
+        <div className="rounded-2xl bg-soft px-4 md:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-4">
+            <span className="text-[15px] font-medium">문항 수</span>
+            <Segmented className="bg-canvas" value={count} onChange={setCount} options={[['10', '10문제'], ['20', '20문제'], ['30', '30문제']]} />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 py-4">
+            <span className="text-[15px] font-medium">제한 시간</span>
+            <Segmented className="bg-canvas" value={minutes} onChange={setMinutes} options={[['20', '20분'], ['40', '40분'], ['60', '60분']]} />
+          </div>
         </div>
       </div>
-      <Button
-        size="lg"
-        className="mt-6 w-full"
-        disabled={!picked.length || busy}
-        onClick={async () => {
-          setBusy(true);
+
+      <div className="sticky bottom-0 border-t border-line bg-canvas">
+        <div className="mx-auto flex w-full max-w-[720px] items-center gap-3 px-4 py-3 md:px-6">
+          <span className="min-w-0 flex-1 text-[14px] text-sub">
+            {waiting ? 'AI가 올린 자료를 읽고 있어요' : picked.length ? `자료 ${picked.length}개 담음` : '시험 범위 자료를 먼저 담아 주세요'}
+          </span>
+          <Button disabled={!ready || busy} onClick={() => void create()}>
+            {busy ? <Spinner className="h-4 w-4" /> : '시험지 만들기'}
+          </Button>
+        </div>
+      </div>
+
+      <Modal open={pickerOpen} onClose={() => setPickerOpen(false)} width={520}>
+        <h2 className="text-[20px] font-semibold">문서에서 고르기</h2>
+        <p className="mt-1 text-[14px] text-muted">{mode === 'variant' ? '기출 시험지 하나를 골라 주세요.' : `${max}개까지 고를 수 있어요.`}</p>
+        <div className="mt-4 max-h-[360px] space-y-1.5 overflow-y-auto">
+          {docs === null ? (
+            <div className="flex justify-center py-8">
+              <Spinner />
+            </div>
+          ) : docs.filter((d) => d.status === 'ready').length === 0 ? (
+            <p className="rounded-2xl bg-soft p-5 text-center text-[14px] text-sub">아직 다 정리된 문서가 없어요. 파일 올리기로 바로 넣어 보세요.</p>
+          ) : (
+            docs
+              .filter((d) => d.status === 'ready')
+              .map((d) => {
+                const on = picked.includes(d.id);
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => toggle(d.id)}
+                    className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left ${on ? 'border-ink' : 'border-line hover:bg-soft'}`}
+                  >
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${on ? 'border-solid bg-solid text-on-solid' : 'border-line'}`}>
+                      {on && <Check size={13} strokeWidth={3} />}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[15px]">{d.title}</span>
+                    <span className="shrink-0 text-[13px] text-muted">{KIND_LABEL[d.kind]}</span>
+                  </button>
+                );
+              })
+          )}
+        </div>
+        <Button size="lg" className="mt-5 w-full" onClick={() => setPickerOpen(false)}>
+          {picked.length ? `${picked.length}개 담기` : '닫기'}
+        </Button>
+      </Modal>
+
+      <input
+        ref={fileInput}
+        type="file"
+        accept={`${DOC_ACCEPT},${IMAGE_ACCEPT}`}
+        hidden
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (!f) return;
+          setUploading(0);
           try {
-            const r = await api<{ id: string }>('/api/exams', { docIds: picked, count: Number(count), durationMin: Number(minutes), mode });
-            onClose();
-            navigate(`/exam/${r.id}`);
-          } catch (e) {
-            onError(e);
+            const id = await uploadFiles([f], undefined, setUploading);
+            await loadDocs();
+            setPicked((p) => (max === 1 ? [id] : p.length >= max ? p : [...p, id]));
+          } catch (err) {
+            onError(err);
           } finally {
-            setBusy(false);
+            setUploading(null);
           }
         }}
-      >
-        {busy ? <Spinner className="h-4 w-4" /> : `시험지 만들기${picked.length ? ` (${picked.length}개 자료)` : ''}`}
-      </Button>
-    </Modal>
+      />
+      <UploadProgress progress={uploading} />
+    </div>
   );
 }
 
@@ -142,6 +251,14 @@ export function ExamHome() {
     { icon: Sparkles, title: '풀어 본 문제는 빼고', sub: '퀴즈 탭에서 이미 푼 문제와 다른, 새 문제로만 내요.' },
     { icon: Clock, title: '시간 맞춰 풀고 곧바로 채점', sub: '답안지에서 안 푼 문제를 확인하고, 틀린 것만 골라 다시 풀어요.' },
   ];
+
+  if (builder) {
+    return (
+      <AppShell bare mobileMenu={false}>
+        <Builder mode={builder} onClose={() => setBuilder(null)} />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="">
@@ -203,7 +320,6 @@ export function ExamHome() {
           </div>
         </div>
       )}
-      <Builder open={builder !== null} mode={builder ?? 'mock'} onClose={() => setBuilder(null)} />
     </AppShell>
   );
 }
