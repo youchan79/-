@@ -14,7 +14,9 @@ export default function MemoNew() {
   const save = async () => {
     setBusy(true);
     try {
-      const r = await api<{ id: string }>('/api/docs/memo', { title, text });
+      // 폴더 안에서 '새 메모'를 누르면 그 폴더에 넣는다
+      const folderId = new URLSearchParams(location.search).get('folder');
+      const r = await api<{ id: string }>('/api/docs/memo', { title, text, folderId });
       navigate(`/doc/${r.id}`);
     } catch (e) {
       onError(e);

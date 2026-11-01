@@ -1,18 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { api, type MaterialKind } from './api.ts';
 import { useApp } from './app.tsx';
 
+/**
+ * 학습 자료를 읽어 올 주소의 앞부분. 보통은 /api/docs/{id}, 공유 링크 화면에서는 /api/share/{토큰}.
+ * 같은 탭 화면(요약·퀴즈 등)을 공유 화면에서 그대로 쓰려고 둔다.
+ */
+export const DocApiBase = createContext<string | null>(null);
+export function useDocApi(docId: string) {
+  return useContext(DocApiBase) ?? `/api/docs/${docId}`;
+}
+
 /** 학습 자료 하나를 불러오고, 만드는 중이면 다 될 때까지 다시 확인한다. */
 export function useMaterial<T>(docId: string, kind: MaterialKind, enabled = true) {
+  const base = useDocApi(docId);
   const [state, setState] = useState<{ status: string; data: T | null; error: string | null }>({ status: 'loading', data: null, error: null });
   const load = useCallback(async () => {
     try {
-      const r = await api<{ status: string; json: T | null; error: string | null }>(`/api/docs/${docId}/materials/${kind}`);
+      const r = await api<{ status: string; json: T | null; error: string | null }>(`${base}/materials/${kind}`);
       setState({ status: r.status, data: r.json, error: r.error });
     } catch (e: any) {
       setState({ status: 'error', data: null, error: e.message });
     }
-  }, [docId, kind]);
+  }, [base, kind]);
   useEffect(() => {
     if (enabled) void load();
   }, [load, enabled]);

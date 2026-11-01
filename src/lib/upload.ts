@@ -6,6 +6,7 @@ export async function uploadFiles(
   files: File[],
   extra: Record<string, string> = {},
   onProgress?: (ratio: number) => void,
+  url = '/api/docs/upload',
 ): Promise<string> {
   const fd = new FormData();
   for (const f of files) fd.append('files', f, f.name);
@@ -18,7 +19,7 @@ export async function uploadFiles(
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/docs/upload');
+    xhr.open('POST', url);
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
     xhr.onload = () => {
       let json: any = {};

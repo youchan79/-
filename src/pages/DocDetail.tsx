@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Columns2, Loader2, PanelLeftOpen } from 'lucide-react';
+import { ArrowLeft, Brain, Columns2, Share2, Layers, ListChecks, Loader2, MessageCircle, NotebookPen, PanelLeftOpen, Sparkles, TextQuote, Workflow } from 'lucide-react';
 import { api, type DocDetail as Doc, type MindNode } from '../lib/api.ts';
 import { useApp } from '../lib/app.tsx';
 import { useMaterial, usePoll } from '../lib/hooks.ts';
@@ -9,6 +9,8 @@ import { ChatView } from '../components/ChatView.tsx';
 import { MindMap } from '../components/MindMap.tsx';
 import { Button, IconButton, Loading } from '../components/ui.tsx';
 import { SourcePane, type SourceHandle } from './doc/SourcePane.tsx';
+import { Recorder } from './doc/Recorder.tsx';
+import { ShareModal } from './doc/ShareModal.tsx';
 import { ConceptsTab, Generating, MaterialError, MemoTab, MemorizeTab, SummaryTab } from './doc/tabs.tsx';
 import { FlashcardsTab, QuizTab } from './doc/sets.tsx';
 
@@ -27,7 +29,7 @@ type Tab = (typeof TABS)[number][0] | 'source';
 /** 폰에서는 레퍼런스처럼 원문이 첫 탭이다 */
 const SOURCE_LABEL: Record<Doc['kind'], string> = { pdf: 'PDF', docx: 'Word', pptx: 'PPT', youtube: '영상', audio: '녹음', image: '사진', memo: '원문' };
 
-function MindmapTab({ doc }: { doc: Doc }) {
+export function MindmapTab({ doc }: { doc: Doc }) {
   const m = useMaterial<{ root: MindNode }>(doc.id, 'mindmap');
   if (m.status === 'error') return <MaterialError message={m.error} />;
   if (!m.data) return <Generating label="AI가 마인드맵을 그리고 있어요" />;
@@ -48,7 +50,7 @@ function TutorTab({ doc, onRef }: { doc: Doc; onRef: (r: string) => void }) {
       compact
       onRef={onRef}
       emptyTitle="이 자료에 대해 물어보세요"
-      suggestions={['핵심만 3줄로 정리해줘', '시험에 나올 만한 부분 알려줘', '어려운 개념 쉽게 설명해줘']}
+      suggestions={['세 줄로 핵심만 뽑아줘', '시험에 나올 것 같은 곳 짚어줘', '헷갈리는 개념 쉽게 풀어줘']}
       ensureChat={async () => {
         if (!me?.user) {
           openLogin({ mode: 'signup' });
@@ -96,6 +98,34 @@ function Processing({ doc }: { doc: Doc }) {
   );
 }
 
+const TAB_ICON: Record<string, React.ComponentType<{ size?: number }>> = {
+  summary: TextQuote,
+  quiz: ListChecks,
+  flashcards: Layers,
+  mindmap: Workflow,
+  memorize: Brain,
+  concepts: Sparkles,
+  memo: NotebookPen,
+  tutor: MessageCircle,
+};
+
+/** 녹음 전인 강의 녹음 문서의 탭: 무엇이 만들어질지 보여 주고, 버튼은 녹음이 끝나야 켜진다 */
+function WaitRecording({ tab, label }: { tab: string; label: string }) {
+  const Icon = TAB_ICON[tab] ?? TextQuote;
+  return (
+    <div className="flex flex-col items-center px-6 py-24 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-xl border border-line text-sub">
+        <Icon size={20} />
+      </span>
+      <div className="mt-4 text-[18px] font-semibold">{label}</div>
+      <p className="mt-1 text-[15px] text-muted">녹음을 끝내면 여기에 정리돼요.</p>
+      <Button className="mt-5" disabled>
+        {label} 만들기
+      </Button>
+    </div>
+  );
+}
+
 function useIsDesktop() {
   const q = '(min-width: 1024px)';
   const [v, setV] = useState(() => window.matchMedia(q).matches);
@@ -119,6 +149,7 @@ export default function DocDetail({ id, search }: { id: string; search: string }
   );
   const [showSource, setShowSource] = useState(true);
   const [focus, setFocus] = useState<{ kind: 'quiz' | 'flashcards'; name: string; n: number } | null>(null);
+  const [sharing, setSharing] = useState(false);
   const source = useRef<SourceHandle>(null);
 
   const load = useCallback(async () => {
@@ -172,8 +203,12 @@ export default function DocDetail({ id, search }: { id: string; search: string }
   }
 
   const ready = doc.status === 'ready';
-  const sourceReady = ready || doc.kind === 'pdf';
-  const tabs: ReadonlyArray<readonly [Tab, string]> = desktop ? TABS : [['source', SOURCE_LABEL[doc.kind]], ...TABS];
+  const recording = doc.status === 'recording';
+  const sourceReady = ready || doc.kind === 'pdf' || recording;
+  const left = recording ? <Recorder doc={doc} onDone={() => void load()} /> : <SourcePane ref={source} doc={doc} />;
+  // 메모 문서는 본문이 곧 메모라서 메모 탭을 따로 두지 않는다(원조와 같음)
+  const docTabs = doc.kind === 'memo' ? TABS.filter(([t]) => t !== 'memo') : TABS;
+  const tabs: ReadonlyArray<readonly [Tab, string]> = desktop ? docTabs : [['source', SOURCE_LABEL[doc.kind]], ...docTabs];
 
   return (
     <AppShell bare forceCollapsed mobileMenu={false}>
@@ -191,6 +226,12 @@ export default function DocDetail({ id, search }: { id: string; search: string }
               로그인
             </Button>
           )}
+          {!doc.readOnly && ready && (
+            <button type="button" onClick={() => setSharing(true)} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[15px] text-sub hover:bg-soft hover:text-ink" aria-label="공유">
+              <Share2 size={17} />
+              <span className="hidden sm:inline">공유</span>
+            </button>
+          )}
           {desktop && (
             <IconButton onClick={() => setShowSource((s) => !s)} aria-label="원문 패널">
               <Columns2 size={18} />
@@ -201,7 +242,7 @@ export default function DocDetail({ id, search }: { id: string; search: string }
         <div className="flex min-h-0 flex-1">
           {desktop && showSource && (
             <section className="hidden w-[42%] min-w-[360px] max-w-[640px] shrink-0 border-r border-line lg:block">
-              {doc.status === 'error' ? null : <SourcePane ref={source} doc={doc} onCollapse={() => setShowSource(false)} />}
+              {doc.status === 'error' ? null : recording ? left : <SourcePane ref={source} doc={doc} onCollapse={() => setShowSource(false)} />}
             </section>
           )}
           {desktop && !showSource && (
@@ -222,7 +263,7 @@ export default function DocDetail({ id, search }: { id: string; search: string }
                   <button
                     key={t}
                     type="button"
-                    disabled={t === 'source' ? !sourceReady : !ready}
+                    disabled={t === 'source' ? !sourceReady : !ready && !recording}
                     onClick={() => selectTab(t)}
                     className={`h-9 shrink-0 whitespace-nowrap rounded-full px-3.5 text-[14px] transition disabled:opacity-40 ${tab === t ? 'bg-solid font-medium text-on-solid' : 'text-sub hover:text-ink'}`}
                   >
@@ -233,9 +274,9 @@ export default function DocDetail({ id, search }: { id: string; search: string }
             </div>
             <div className={`min-h-0 flex-1 ${tab === 'tutor' || tab === 'mindmap' || tab === 'source' ? 'flex flex-col' : 'overflow-y-auto'}`}>
               {tab === 'source' && sourceReady ? (
-                <div className="min-h-0 flex-1">
-                  <SourcePane ref={source} doc={doc} />
-                </div>
+                <div className="min-h-0 flex-1">{left}</div>
+              ) : recording ? (
+                <WaitRecording tab={tab} label={tabs.find(([t]) => t === tab)?.[1] ?? ''} />
               ) : doc.status === 'processing' ? (
                 <Processing doc={doc} />
               ) : doc.status === 'error' ? (
@@ -275,6 +316,7 @@ export default function DocDetail({ id, search }: { id: string; search: string }
           </section>
         </div>
       </div>
+      {sharing && <ShareModal doc={doc} onClose={() => setSharing(false)} />}
     </AppShell>
   );
 }

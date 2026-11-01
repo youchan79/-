@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ChevronLeft, CreditCard, Search, Send, Settings as Cog, SlidersHorizontal, User } from 'lucide-react';
+import { ChevronLeft, CreditCard, LogOut, Search, Send, Settings as Cog, SlidersHorizontal, User } from 'lucide-react';
 import { api, formatDate, formatRenew, won } from '../lib/api.ts';
+import { FeedbackModal } from '../components/AppShell.tsx';
 import { useApp } from '../lib/app.tsx';
 import { Link, navigate } from '../lib/router.tsx';
 import { useApiErrorHandler } from '../components/Modals.tsx';
@@ -36,7 +37,7 @@ function ProCard() {
     <div className="mb-3 flex items-center justify-between gap-4 rounded-2xl border border-line p-4">
       <div>
         <div className="text-[16px]">{config?.serviceName} Pro</div>
-        <div className="mt-1 text-[13px] text-sub">더 많은 자료를 올리고, 학습을 이어가세요.</div>
+        <div className="mt-1 text-[13px] text-sub">올리는 개수 걱정 없이 계속 공부하세요.</div>
       </div>
       <Button size="sm" onClick={() => navigate('/subscription')}>
         업그레이드
@@ -58,6 +59,11 @@ function General() {
           🇰🇷 한국어
         </button>
       </Row>
+      <Row label="휴지통" sub="지운 문서는 7일 동안 보관돼요">
+        <Button size="sm" variant="ghost" onClick={() => navigate('/trash')}>
+          보기
+        </Button>
+      </Row>
     </>
   );
 }
@@ -75,50 +81,49 @@ function Account() {
       </div>
     );
   }
+  const via: Record<string, string> = { google: 'Google', kakao: '카카오', naver: '네이버' };
   return (
     <>
-      <Row label="이메일">
-        <span className="text-[14px] text-sub">{me.user.email}</span>
-      </Row>
-      <Row label="휴대폰" sub="결제할 때 페이앱에 전달돼요">
-        <span className="text-[14px] text-sub">{me.user.phone ? me.user.phone.replace(/(\d{3})(\d{3,4})(\d{4})/, '$1-$2-$3') : '없음'}</span>
-      </Row>
-      <Row label="가입일">
-        <span className="text-[14px] text-sub">{formatDate(me.user.createdAt)}</span>
-      </Row>
-      <Row label="로그아웃">
+      <div className="flex items-center gap-3 py-4">
+        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-solid text-[18px] font-semibold text-on-solid">
+          {(me.user.name || me.user.email)[0].toUpperCase()}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[15px] font-medium">{me.user.name || me.user.email}</div>
+          <div className="mt-0.5 truncate text-[14px] text-sub">
+            {me.user.provider && <span className="mr-1.5 rounded bg-soft-2 px-1.5 py-px text-[13px] text-muted">{via[me.user.provider]}</span>}
+            {me.user.email}
+          </div>
+        </div>
         <Button
           size="sm"
-          variant="outline"
+          className="shrink-0"
           onClick={async () => {
             await api('/api/auth/logout', {});
             await refreshMe();
             navigate('/home');
           }}
         >
-          로그아웃
+          <LogOut size={15} /> 로그아웃
         </Button>
-      </Row>
-      <Row label="회원 탈퇴" sub="올린 자료와 학습 기록이 모두 지워져요">
-        <Button
-          size="sm"
-          variant="ghost"
-          className="!text-red"
-          onClick={async () => {
-            if (!window.confirm('정말 탈퇴할까요? 올린 자료와 학습 기록은 되돌릴 수 없어요.')) return;
-            try {
-              await api('/api/account/delete', {});
-              await refreshMe();
-              showToast('탈퇴했어요. 그동안 고마웠어요.');
-              navigate('/');
-            } catch (e) {
-              onError(e);
-            }
-          }}
-        >
-          탈퇴하기
-        </Button>
-      </Row>
+      </div>
+      <button
+        type="button"
+        className="mt-2 text-[14px] text-muted underline underline-offset-4 hover:text-red"
+        onClick={async () => {
+          if (!window.confirm('정말 탈퇴할까요? 올린 자료와 학습 기록은 모두 지워지고 되돌릴 수 없어요.')) return;
+          try {
+            await api('/api/account/delete', {});
+            await refreshMe();
+            showToast('탈퇴했어요. 그동안 고마웠어요.');
+            navigate('/');
+          } catch (e) {
+            onError(e);
+          }
+        }}
+      >
+        회원 탈퇴
+      </button>
     </>
   );
 }
@@ -172,46 +177,68 @@ function AiSettings() {
     const r = await api<{ settings: Record<string, string> }>('/api/settings', patch, { method: 'PUT' });
     setMe({ ...me, settings: r.settings });
   };
+  const quizTypes = (s.quizTypes ?? 'choice').split(',').filter(Boolean);
+  const toggleType = (t: string) => {
+    const next = quizTypes.includes(t) ? quizTypes.filter((x) => x !== t) : [...quizTypes, t];
+    if (next.length) void save({ quizTypes: next.join(',') });
+  };
   return (
     <>
+      <p className="pt-4 text-[14px] leading-[1.6] text-muted">바꾼 설정은 다음에 새로 만드는 학습 자료부터 적용돼요. 이미 만든 자료는 그대로예요.</p>
       <Row label="학습 자료 언어" sub="요약, 퀴즈, 플래시카드를 쓸 언어">
         <Segmented value={s.answerLanguage ?? 'ko'} onChange={(v) => void save({ answerLanguage: v })} options={[['ko', '한국어'], ['source', '자료 언어']]} />
       </Row>
+      <h2 className="pb-1 pt-6 text-[15px] font-semibold">요약</h2>
       <Row label="요약 길이">
         <Segmented value={s.summaryLength ?? 'normal'} onChange={(v) => void save({ summaryLength: v })} options={[['short', '짧게'], ['normal', '보통'], ['long', '자세히']]} />
       </Row>
-      <Row label="퀴즈 기본 난이도">
+      <Row label="쓰는 방식" sub="항목은 핵심을 줄마다, 문단은 이어지는 글로">
+        <Segmented value={s.summaryFormat ?? 'auto'} onChange={(v) => void save({ summaryFormat: v })} options={[['auto', '알아서'], ['bullet', '항목'], ['prose', '문단']]} />
+      </Row>
+      <Row label="쉬운 설명 붙이기" sub="어려운 대목마다 비유를 섞은 풀이를 달아요">
+        <Segmented value={s.summaryEasy ?? 'on'} onChange={(v) => void save({ summaryEasy: v })} options={[['on', '켜기'], ['off', '끄기']]} />
+      </Row>
+      <h2 className="pb-1 pt-6 text-[15px] font-semibold">퀴즈</h2>
+      <Row label="기본 난이도">
         <Segmented value={s.quizDifficulty ?? '보통'} onChange={(v) => void save({ quizDifficulty: v })} options={[['쉬움', '쉬움'], ['보통', '보통'], ['어려움', '어려움']]} />
       </Row>
-      <p className="pt-4 text-[13px] text-muted">바꾼 설정은 다음에 만드는 학습 자료부터 적용돼요.</p>
+      <div className="border-b border-line py-4">
+        <div className="text-[15px]">문제 형식</div>
+        <div className="mt-0.5 text-[13px] text-muted">하나 이상 고르면 골고루 섞어 내요</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {[
+            ['choice', '객관식'],
+            ['ox', 'OX'],
+            ['blank', '빈칸 채우기'],
+          ].map(([t, label]) => {
+            const on = quizTypes.includes(t);
+            return (
+              <button
+                key={t}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggleType(t)}
+                className={`h-10 rounded-full px-4 text-[15px] transition ${on ? 'bg-solid font-medium text-on-solid' : 'bg-soft text-sub hover:text-ink'}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </>
   );
 }
 
 function Feedback() {
-  const { showToast } = useApp();
-  const [text, setText] = useState('');
+  const [open, setOpen] = useState(false);
   return (
-    <div className="pt-2">
-      <p className="text-[14px] text-sub">바라는 기능이나 불편한 점을 알려 주세요. 모두 읽고 있어요.</p>
-      <textarea
-        rows={8}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        className="mt-4 w-full resize-none rounded-2xl border border-line bg-canvas p-4 text-[15px] outline-none focus:border-ink"
-        placeholder="예: 플래시카드를 PDF로 뽑고 싶어요"
-      />
-      <Button
-        className="mt-3"
-        disabled={!text.trim()}
-        onClick={async () => {
-          await api('/api/feedback', { text });
-          setText('');
-          showToast('보내 주셔서 고마워요.');
-        }}
-      >
-        보내기
+    <div className="pt-4">
+      <p className="text-[15px] leading-[1.7] text-sub">쓰다가 막힌 곳, 있었으면 하는 기능, 이상하게 동작한 부분 무엇이든 적어 주세요. 하나하나 읽고 다음 업데이트에 반영할게요.</p>
+      <Button className="mt-4" onClick={() => setOpen(true)}>
+        <Send size={16} /> 의견 보내기
       </Button>
+      <FeedbackModal open={open} onClose={() => setOpen(false)} />
     </div>
   );
 }
@@ -243,6 +270,10 @@ export default function Settings({ search }: { search: string }) {
               <button
                 key={t}
                 type="button"
+                // 폰에서 가로로 넘기는 탭 줄: 고른 탭이 화면 밖에 있으면 보이게
+                ref={(el) => {
+                  if (el && tab === t) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                }}
                 onClick={() => setTab(t)}
                 className={`flex h-10 shrink-0 items-center gap-2.5 rounded-lg px-3 text-[15px] ${tab === t ? 'bg-soft' : 'text-sub hover:bg-soft/70'}`}
               >

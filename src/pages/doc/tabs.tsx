@@ -286,10 +286,10 @@ export function ConceptsTab({
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button size="sm" onClick={() => onMakeSet('quiz', c.name)}>
-                      <ListChecks size={15} /> 이 개념으로 퀴즈 생성
+                      <ListChecks size={15} /> 이 개념 퀴즈 만들기
                     </Button>
                     <Button size="sm" onClick={() => onMakeSet('flashcards', c.name)}>
-                      <Layers size={15} /> 이 개념으로 플래시카드 생성
+                      <Layers size={15} /> 이 개념 카드 만들기
                     </Button>
                   </div>
                 </div>

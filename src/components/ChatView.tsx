@@ -17,7 +17,7 @@ export function ChatView({
   chatId,
   ensureChat,
   suggestions,
-  emptyTitle = '무엇을 도와드릴까요?',
+  emptyTitle = '궁금한 걸 물어보세요',
   initialQuestion,
   onRef,
   compact = false,

@@ -8,6 +8,8 @@ import Landing from './pages/Landing.tsx';
 import Documents from './pages/Documents.tsx';
 import AddContent from './pages/AddContent.tsx';
 import Record from './pages/Record.tsx';
+import Trash from './pages/Trash.tsx';
+import SharedDoc from './pages/SharedDoc.tsx';
 import MemoNew from './pages/MemoNew.tsx';
 import DocDetail from './pages/DocDetail.tsx';
 import Tutor from './pages/Tutor.tsx';
@@ -28,6 +30,7 @@ function Routes() {
   if ((m = path.match(/^\/doc\/([\w-]+)\/?$/))) return <DocDetail key={m[1]} id={m[1]} search={search} />;
   if ((m = path.match(/^\/aichat(?:\/([\w-]+))?\/?$/))) return <Tutor id={m[1] ?? null} search={search} />;
   if ((m = path.match(/^\/exam\/([\w-]+)\/?$/))) return <ExamRun key={m[1]} id={m[1]} />;
+  if ((m = path.match(/^\/share\/([\w-]+)\/?$/))) return <SharedDoc key={m[1]} token={m[1]} />;
   switch (path) {
     case '/home':
       return <Documents />;
@@ -35,6 +38,8 @@ function Routes() {
       return <AddContent />;
     case '/record':
       return <Record />;
+    case '/trash':
+      return <Trash />;
     case '/memo/new':
       return <MemoNew />;
     case '/exam':

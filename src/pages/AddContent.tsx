@@ -41,7 +41,7 @@ export function useUploader() {
   return { progress, run };
 }
 
-export function YoutubeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function YoutubeModal({ open, onClose, folderId }: { open: boolean; onClose: () => void; folderId?: string | null }) {
   const { config } = useApp();
   const [url, setUrl] = useState('');
   const [script, setScript] = useState('');
@@ -52,7 +52,7 @@ export function YoutubeModal({ open, onClose }: { open: boolean; onClose: () => 
     e.preventDefault();
     setBusy(true);
     try {
-      const r = await api<{ id: string }>('/api/docs/youtube', { url, transcript: script });
+      const r = await api<{ id: string }>('/api/docs/youtube', { url, transcript: script, folderId });
       onClose();
       setUrl('');
       setScript('');
@@ -100,7 +100,7 @@ export function YoutubeModal({ open, onClose }: { open: boolean; onClose: () => 
   );
 }
 
-export function ChatInputBar({ placeholder = '무엇이든 물어보세요', onSubmit, busy, autoFocus }: { placeholder?: string; onSubmit: (text: string) => void; busy?: boolean; autoFocus?: boolean }) {
+export function ChatInputBar({ placeholder = '궁금한 걸 편하게 물어보세요', onSubmit, busy, autoFocus }: { placeholder?: string; onSubmit: (text: string) => void; busy?: boolean; autoFocus?: boolean }) {
   const [text, setText] = useState('');
   const ref = useRef<HTMLTextAreaElement>(null);
   const send = () => {
@@ -163,7 +163,8 @@ function Tile({ icon, title, sub, badge, onClick }: { icon: React.ReactNode; tit
 
 export default function AddContent() {
   const requireLogin = useRequireLogin();
-  const { showToast } = useApp();
+  const { showToast, me } = useApp();
+  const name = me?.user?.name;
   const docInput = useRef<HTMLInputElement>(null);
   const imgInput = useRef<HTMLInputElement>(null);
   const [youtube, setYoutube] = useState(false);
@@ -189,16 +190,16 @@ export default function AddContent() {
         }}
       >
         <div className="mx-auto w-full max-w-[680px] flex-1 px-4 pb-8 pt-10 md:pt-[110px]">
-          <h1 className="text-center text-[28px] font-medium tracking-[-0.03em] md:text-[32px]">수업 자료를 올려보세요</h1>
-          <p className="mt-2 text-center text-[15px] text-muted">정리는 AI에게 맡기고, 이해하는 데만 집중하세요.</p>
+          <h1 className="text-center text-[26px] font-medium leading-[1.35] tracking-[-0.03em] md:text-[32px]">{name ? `${name}님, 오늘은 무엇을 정리할까요?` : '오늘은 무엇을 정리할까요?'}</h1>
+          <p className="mt-2 text-center text-[15px] text-muted">필기 정리는 AI에게 넘기고, 이해하는 데 시간을 쓰세요.</p>
 
           <button type="button" onClick={() => pick(docInput)} className="mt-8 flex w-full items-center gap-4 rounded-2xl bg-soft p-5 text-left transition hover:bg-soft-2">
             <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-canvas/70 dark:bg-soft-2">
               <FileUp size={22} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[16px] font-semibold">수업 자료 업로드</span>
-              <span className="mt-1 block text-[14px] text-muted">PDF, PPT, Word 파일을 올리면 바로 학습 시작</span>
+              <span className="block text-[16px] font-semibold">수업 자료 올리기</span>
+              <span className="mt-1 block text-[14px] text-muted">PDF·PPT·Word를 올리면 요약과 퀴즈가 바로 나와요</span>
             </span>
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-solid text-on-solid">
               <ArrowRight size={18} />
@@ -206,10 +207,10 @@ export default function AddContent() {
           </button>
 
           <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Tile icon={<Mic size={19} />} title="강의 녹음" sub="수업을 녹음하면 AI가 정리해드려요" badge onClick={() => requireLogin(() => navigate('/record'))} />
-            <Tile icon={<Youtube size={19} />} title="YouTube 영상" sub="동영상 링크 추가" onClick={() => requireLogin(() => setYoutube(true))} />
-            <Tile icon={<ImageUp size={19} />} title="이미지 업로드" sub="교수님 칠판·필기, 교재를 찍어 올려보세요" onClick={() => pick(imgInput)} />
-            <Tile icon={<SquarePen size={19} />} title="새 메모" sub="적어두기만 하면 요약도 퀴즈도 만들어드려요" onClick={() => requireLogin(() => navigate('/memo/new'))} />
+            <Tile icon={<Mic size={19} />} title="강의 녹음" sub="녹음만 켜 두면 받아 적고 정리까지 해요" badge onClick={() => requireLogin(() => navigate('/record'))} />
+            <Tile icon={<Youtube size={19} />} title="YouTube 영상" sub="강의 영상 주소만 붙여 넣어요" onClick={() => requireLogin(() => setYoutube(true))} />
+            <Tile icon={<ImageUp size={19} />} title="사진 올리기" sub="칠판·필기·교재 사진을 그대로 올려요" onClick={() => pick(imgInput)} />
+            <Tile icon={<SquarePen size={19} />} title="새 메모" sub="메모를 남기면 요약·퀴즈로 바꿔 드려요" onClick={() => requireLogin(() => navigate('/memo/new'))} />
           </div>
 
           <button type="button" onClick={() => navigate('/exam')} className="mt-3 flex w-full items-center gap-4 rounded-2xl bg-soft p-4 text-left transition hover:bg-soft-2">
@@ -218,7 +219,7 @@ export default function AddContent() {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[15px] font-semibold">시험 문제 만들기</span>
-              <span className="mt-1 block text-[13px] text-muted">여러 자료로 실전처럼 풀어 볼 시험지를 만들어요</span>
+              <span className="mt-1 block text-[13px] text-muted">자료 여러 개를 묶어 실제 시험처럼 풀어 봐요</span>
             </span>
             <ArrowRight size={18} className="text-muted" />
           </button>

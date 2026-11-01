@@ -36,7 +36,7 @@ export interface Usage {
 }
 
 export interface Me {
-  user: { email: string; phone: string | null; createdAt: string } | null;
+  user: { email: string; name: string | null; provider: 'google' | 'kakao' | 'naver' | null; phone: string | null; createdAt: string } | null;
   sub: SubView | null;
   usage: Usage | null;
   settings: Record<string, string>;
@@ -47,12 +47,15 @@ export interface DocSummary {
   kind: DocKind;
   title: string;
   thumb: string | null;
-  status: 'processing' | 'ready' | 'error';
+  status: 'recording' | 'processing' | 'ready' | 'error';
   error: string | null;
   durationSec: number | null;
   pageCount: number | null;
   createdAt: string;
   isSample: boolean;
+  preview: string | null;
+  folderId: string | null;
+  favorite: boolean;
 }
 
 export interface DocDetail extends DocSummary {
