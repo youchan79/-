@@ -1,6 +1,26 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { api, type AppConfig, type Me } from './api.ts';
-import { initPixel } from './pixel.ts';
+import { initPixel, track } from './pixel.ts';
+
+// 카카오·네이버 로그인은 페이지를 다녀오므로 결과를 주소로 받는다: 처음 가입이면 ?reg=eventId, 실패면 ?login_error=코드.
+// 화면이 그려지기 전에 주소에서 지우고, 한 번만 쓴다.
+const LOGIN_ERRORS: Record<string, string> = {
+  state: '로그인 시간이 지났어요. 다시 시도해 주세요.',
+  cancelled: '로그인을 취소했어요.',
+  email_taken: '이미 이 이메일로 가입된 계정이 있어요. 처음 가입한 방법으로 로그인해 주세요.',
+  failed: '로그인하지 못했어요. 잠시 후 다시 시도해 주세요.',
+};
+let loginResult: { reg: string | null; error: string | null } | null = (() => {
+  const q = new URLSearchParams(location.search);
+  const reg = q.get('reg');
+  const error = q.get('login_error');
+  if (!reg && !error) return null;
+  q.delete('reg');
+  q.delete('login_error');
+  const rest = q.toString();
+  history.replaceState(null, '', location.pathname + (rest ? `?${rest}` : '') + location.hash);
+  return { reg, error };
+})();
 
 type Theme = 'system' | 'light' | 'dark';
 
@@ -85,6 +105,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       initPixel(c.pixelId);
     });
     refreshMe().catch(() => setMe({ user: null, sub: null, usage: null, settings: {} }));
+    if (loginResult) {
+      // 픽셀은 설정을 받기 전이면 이벤트를 모아 두었다가 보낸다
+      if (loginResult.reg && /^reg_usr_[\w-]+$/.test(loginResult.reg)) track('CompleteRegistration', {}, loginResult.reg);
+      if (loginResult.error) showToast(LOGIN_ERRORS[loginResult.error] ?? LOGIN_ERRORS.failed);
+      loginResult = null;
+    }
     try {
       if (!sessionStorage.getItem('visit')) {
         sessionStorage.setItem('visit', '1');

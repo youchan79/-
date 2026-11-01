@@ -22,6 +22,19 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TEXT NOT NULL
 );
 
+-- 소셜 로그인(구글·카카오·네이버) 연결. 같은 계정은 이메일이 바뀌거나 없어도 subject(제공자의 회원 번호)로 찾는다.
+-- 소셜로만 가입한 사용자는 users.password_hash가 ''라서 비밀번호 로그인이 안 된다.
+CREATE TABLE IF NOT EXISTS user_identities (
+  provider TEXT NOT NULL,       -- google | kakao | naver
+  subject TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  email TEXT,
+  name TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (provider, subject)
+);
+CREATE INDEX IF NOT EXISTS idx_identities_user ON user_identities(user_id);
+
 -- 문서: 업로드한 자료 하나. user_id가 NULL이면 모두가 보는 샘플이다.
 CREATE TABLE IF NOT EXISTS documents (
   id TEXT PRIMARY KEY,

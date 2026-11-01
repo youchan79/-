@@ -5,7 +5,22 @@ import express, { type Request, type Response, type NextFunction } from 'express
 import multer from 'multer';
 import { config, assertProdConfig } from './config.ts';
 import { all, one, run, nowIso, addDays, kstDayStartIso, logFunnel, newId } from './db.ts';
-import { attachIdentity, requireUser, createUser, normalizeEmail, setSession, clearSession, verifyPassword } from './auth.ts';
+import {
+  attachIdentity,
+  requireUser,
+  createUser,
+  normalizeEmail,
+  setSession,
+  clearSession,
+  verifyPassword,
+  startOauthState,
+  takeOauthState,
+  setLoginHint,
+  markHintSignedOut,
+  clearLoginHint,
+  maskEmail,
+  maskName,
+} from './auth.ts';
 import { aiMode, chatReply, AiError } from './ai.ts';
 import { mediaSupport } from './media.ts';
 import {
@@ -37,6 +52,21 @@ import {
   type Plan,
 } from './billing.ts';
 import { sendServerEvent } from './meta.ts';
+import {
+  SocialError,
+  decodeMockUser,
+  findOrCreateSocialUser,
+  googleProfile,
+  mockClientOk,
+  mockGoogleToken,
+  mockMeResponse,
+  mockOauthCode,
+  oauthAuthorizeUrl,
+  oauthEnabled,
+  oauthProfile,
+  type OauthProvider,
+  type SocialProfile,
+} from './social.ts';
 import { seedSamples } from './samples.ts';
 import type { MaterialKind, SetKind } from './prompts.ts';
 
@@ -71,14 +101,26 @@ app.get('/api/config', (_req, res) => {
     aiMode,
     media: mediaSupport,
     business: config.business,
+    // 소셜 로그인. 공개 값(구글 클라이언트 ID, 카카오 JavaScript 키)과 켜졌는지만. 꺼진 쪽은 버튼을 숨긴다.
+    auth: {
+      google: config.social.googleClientId || null,
+      kakao: oauthEnabled('kakao'),
+      kakaoJsKey: oauthEnabled('kakao') ? config.social.kakaoJsKey || null : null,
+      naver: oauthEnabled('naver'),
+      mock: config.social.mock,
+    },
   });
 });
 
 function meView(req: Request) {
   if (!req.user) return { user: null, sub: null, usage: null, settings: {} };
   const row = one('SELECT settings_json FROM users WHERE id = ?', req.user.id);
+  // 이메일을 못 받은 소셜 계정(자리표시 주소)은 '카카오 계정'처럼 보여 준다
+  const placeholder = /^(\w+)_[0-9a-f]+@no-email\.invalid$/.exec(req.user.email);
+  const via: Record<string, string> = { kakao: '카카오', naver: '네이버', google: 'Google' };
+  const email = placeholder ? `${via[placeholder[1]] ?? placeholder[1]} 계정` : req.user.email;
   return {
-    user: { email: req.user.email, phone: req.user.phone, createdAt: req.user.created_at },
+    user: { email, phone: req.user.phone, createdAt: req.user.created_at },
     sub: subscriptionView(req.user.id),
     usage: usage(req.user.id, req.user.created_at),
     settings: JSON.parse(row?.settings_json || '{}'),
@@ -99,6 +141,7 @@ app.post(
     const user = createUser(email, password);
     req.user = user;
     setSession(res, user.id);
+    setLoginHint(res, 'email', maskEmail(email));
     logFunnel('signup', req.anonId, user.id);
     const eventId = `reg_${user.id}`;
     void sendServerEvent(req, { eventName: 'CompleteRegistration', eventId, email });
@@ -112,15 +155,147 @@ app.post(
     const email = normalizeEmail(req.body?.email);
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     const row = email ? one('SELECT * FROM users WHERE email = ?', email) : undefined;
-    if (!row || !verifyPassword(password, row.password_hash)) return res.status(401).json({ error: '이메일 또는 비밀번호가 맞지 않아요.' });
+    if (!row || !verifyPassword(password, row.password_hash)) {
+      // 소셜로만 가입한 계정은 비밀번호가 없다. 어느 버튼으로 들어오면 되는지 알려 준다.
+      const social = row && !row.password_hash ? one('SELECT provider FROM user_identities WHERE user_id = ? LIMIT 1', row.id) : undefined;
+      const via = social ? ({ google: 'Google', kakao: '카카오', naver: '네이버' } as Record<string, string>)[social.provider] : undefined;
+      if (via) return res.status(401).json({ error: `${via}로 가입한 계정이에요. '${via}로 계속하기'를 눌러 주세요.` });
+      return res.status(401).json({ error: '이메일 또는 비밀번호가 맞지 않아요.' });
+    }
     setSession(res, row.id);
+    setLoginHint(res, 'email', maskEmail(row.email));
     req.user = { id: row.id, email: row.email, phone: row.phone, created_at: row.created_at };
     res.json(meView(req));
   }),
 );
 
-app.post('/api/auth/logout', (_req, res) => {
+/** 소셜 로그인 마무리. 처음 가입이면 이메일 가입과 똑같이 가입 기록과 CompleteRegistration을 남기고 eventId를 돌려준다. */
+function completeSocialLogin(req: Request, res: Response, profile: SocialProfile): string | undefined {
+  const { user, isNew } = findOrCreateSocialUser(profile);
+  req.user = user;
+  setSession(res, user.id);
+  // 다음에 이 기기에서 같은 버튼을 맨 위에 보여 주려고 가린 계정만 남긴다 (예: ch***@gmail.com, 홍*동)
+  const label = profile.provider === 'kakao' && profile.name ? maskName(profile.name) : profile.email ? maskEmail(profile.email) : profile.name ? maskName(profile.name) : '';
+  setLoginHint(res, profile.provider, label);
+  if (!isNew) return undefined;
+  logFunnel('signup', req.anonId, user.id);
+  const eventId = `reg_${user.id}`;
+  void sendServerEvent(req, { eventName: 'CompleteRegistration', eventId, email: user.email });
+  return eventId;
+}
+
+app.post(
+  '/api/auth/google',
+  h(async (req, res) => {
+    const eventId = completeSocialLogin(req, res, await googleProfile(req.body?.credential));
+    res.json(eventId ? { ...meView(req), eventId } : meView(req));
+  }),
+);
+
+/* 카카오·네이버: 시작 → 제공자 로그인 화면 → 콜백 → 원래 보던 화면으로.
+   처음 가입이면 ?reg=eventId (브라우저 픽셀용), 실패면 ?login_error=코드 를 붙여 돌려보낸다. */
+const safeNext = (v: unknown) => (typeof v === 'string' && /^\/(?![/\\])/.test(v) ? v.slice(0, 300) : '/home');
+const withQuery = (to: string, q: string) => (q ? `${to}${to.includes('?') ? '&' : '?'}${q}` : to);
+const callbackUrl = (req: Request, p: OauthProvider) => `${origin(req)}/api/auth/${p}/callback`;
+
+for (const p of ['kakao', 'naver'] as const) {
+  app.get(`/api/auth/${p}/start`, (req, res) => {
+    const next = safeNext(req.query.next);
+    if (!oauthEnabled(p)) return res.redirect(withQuery(next, 'login_error=failed'));
+    const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(req.get('user-agent') ?? '');
+    res.redirect(oauthAuthorizeUrl(p, callbackUrl(req, p), startOauthState(res, p, next), mobile));
+  });
+
+  app.get(
+    `/api/auth/${p}/callback`,
+    h(async (req, res) => {
+      const saved = takeOauthState(req, res, p, req.query.state);
+      const back = (q: string) => res.redirect(withQuery(saved?.next ?? '/home', q));
+      if (!saved) return back('login_error=state'); // state가 없거나 다르면 코드를 쓰지 않는다 (CSRF)
+      const code = req.query.code;
+      if (typeof code !== 'string' || !code) return back('login_error=cancelled');
+      try {
+        const eventId = completeSocialLogin(req, res, await oauthProfile(p, code, callbackUrl(req, p), String(req.query.state)));
+        back(eventId ? `reg=${eventId}` : '');
+      } catch (e) {
+        if (!(e instanceof SocialError)) console.error(e);
+        back(`login_error=${e instanceof SocialError ? e.code : 'failed'}`);
+      }
+    }),
+  );
+}
+
+// 카카오 JavaScript SDK용: 창이 열릴 때 state를 미리 받아 둔다. 그래야 버튼을 누르는 순간 바로
+// Kakao.Auth.authorize를 불러 폰에서 카카오톡 앱으로 넘어갈 수 있다 (기다렸다 부르면 앱 전환이 막힐 수 있음).
+app.post('/api/auth/kakao/prepare', (req, res) => {
+  if (!oauthEnabled('kakao')) return res.status(404).json({ error: '카카오 로그인이 꺼져 있어요.' });
+  res.json({ state: startOauthState(res, 'kakao', safeNext(req.body?.next)), redirectUri: callbackUrl(req, 'kakao') });
+});
+
+// 개발용 가짜 로그인. SOCIAL_LOGIN_MOCK=1인 개발 환경에서만 이 경로들이 생긴다 (운영에서는 등록되지 않음).
+if (config.social.mock) {
+  const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  const esc = (v: string) => v.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+  // 구글: 진짜와 같은 모양의 ID 토큰 (테스트 키로 서명). 거절 경우를 시험하려고 aud·iss·exp도 바꿀 수 있다.
+  app.post('/api/auth/mock-token', (req, res) => {
+    const b = req.body ?? {};
+    const expiresIn = typeof b.expiresIn === 'number' ? b.expiresIn : undefined;
+    const emailVerified = b.emailVerified === false ? false : undefined;
+    res.json({ token: mockGoogleToken({ email: s(b.email), sub: s(b.sub), emailVerified, aud: s(b.aud), iss: s(b.iss), expiresIn }) });
+  });
+
+  // 카카오·네이버 로그인 화면 흉내
+  app.get('/api/auth/mock/authorize', (req, res) => {
+    const p = req.query.provider === 'naver' ? 'naver' : 'kakao';
+    const label = p === 'kakao' ? '카카오' : '네이버';
+    const keep = ['redirect_uri', 'state'].map((k) => `<input type="hidden" name="${k}" value="${esc(s(req.query[k]) ?? '')}">`).join('');
+    res.type('html').send(`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>[개발용] 가짜 ${label} 로그인</title>
+<body style="font:16px/1.6 system-ui,sans-serif;max-width:360px;margin:40px auto;padding:0 16px">
+<h1 style="font-size:20px">[개발용] 가짜 ${label} 로그인</h1>
+<form action="/api/auth/mock/approve" method="get">
+<input type="hidden" name="provider" value="${p}">${keep}
+<p><label>이메일 (비우면 이메일 없이)<br><input name="email" value="test@${p}.com" style="font:inherit;width:100%;box-sizing:border-box"></label></p>
+${p === 'kakao' ? '<p><label><input type="checkbox" name="verified" value="1" checked> 카카오가 확인한 이메일</label></p>' : '<p>네이버는 이메일 인증 여부를 주지 않아요.</p>'}
+<p><button name="ok" value="1" style="font:inherit">동의하고 계속하기</button> <button name="cancel" value="1" style="font:inherit">취소</button></p>
+</form></body></html>`);
+  });
+
+  app.get('/api/auth/mock/approve', (req, res) => {
+    const p = req.query.provider === 'naver' ? 'naver' : 'kakao';
+    const redirect = s(req.query.redirect_uri) ?? '';
+    const state = encodeURIComponent(s(req.query.state) ?? '');
+    if (!redirect.endsWith(`/api/auth/${p}/callback`)) return res.status(400).send('redirect_uri가 맞지 않아요.');
+    if (req.query.cancel) return res.redirect(`${redirect}?error=access_denied&state=${state}`);
+    const code = mockOauthCode(p, s(req.query.email)?.trim() || null, req.query.verified === '1', s(req.query.id));
+    res.redirect(`${redirect}?code=${code}&state=${state}`);
+  });
+
+  // 진짜 토큰 교환과 같은 요청 모양(폼 본문, client_id·secret·redirect_uri)을 확인한다
+  app.post('/api/auth/mock/token', express.urlencoded({ extended: false }), (req, res) => {
+    const b = req.body ?? {};
+    const u = decodeMockUser(b.code);
+    const ok =
+      u &&
+      b.grant_type === 'authorization_code' &&
+      mockClientOk(u.provider, b.client_id, b.client_secret) &&
+      s(b.redirect_uri)?.endsWith(`/api/auth/${u.provider}/callback`) &&
+      (u.provider === 'kakao' || !!b.state);
+    if (!ok) return res.status(400).json({ error: 'invalid_grant' });
+    res.json({ access_token: b.code, token_type: 'bearer', expires_in: 3600 });
+  });
+
+  app.get('/api/auth/mock/me', (req, res) => {
+    const u = decodeMockUser(req.headers.authorization?.replace(/^Bearer /, ''));
+    if (!u || u.provider !== req.query.provider) return res.status(401).json({ msg: 'invalid token' });
+    res.json(mockMeResponse(u));
+  });
+}
+
+app.post('/api/auth/logout', (req, res) => {
   clearSession(res);
+  markHintSignedOut(req, res); // 마지막 로그인 방법 힌트는 남긴다
   res.json({ ok: true });
 });
 
@@ -144,9 +319,11 @@ app.post(
     run('DELETE FROM chats WHERE user_id = ?', userId);
     run('DELETE FROM exams WHERE user_id = ?', userId);
     run('DELETE FROM progress WHERE user_id = ?', userId);
+    run('DELETE FROM user_identities WHERE user_id = ?', userId); // 탈퇴한 계정으로 다시 소셜 로그인되지 않게
     // 결제 기록은 전자상거래법상 5년 보관한다. 계정 식별 정보만 지운다.
     run("UPDATE users SET email = ?, password_hash = '', phone = NULL, settings_json = '{}' WHERE id = ?", `deleted_${userId}@deleted`, userId);
     clearSession(res);
+    clearLoginHint(res);
     res.json({ ok: true });
   }),
 );
@@ -603,6 +780,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof LimitError) return res.status(402).json({ error: err.message, reason: err.reason });
   if (err instanceof DocError || err instanceof PaymentError) return res.status(400).json({ error: err.message });
   if (err instanceof AiError) return res.status(502).json({ error: err.message });
+  if (err instanceof SocialError) return res.status(401).json({ error: err.message });
   if (err instanceof multer.MulterError) {
     return res.status(413).json({ error: err.code === 'LIMIT_FILE_SIZE' ? '파일이 너무 커요.' : '업로드에 실패했어요.' });
   }

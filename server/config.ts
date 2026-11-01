@@ -15,6 +15,9 @@ function num(name: string, fallback: number): number {
 
 const isProd = process.env.NODE_ENV === 'production';
 
+// 소셜 로그인 가짜 모드: 개발 환경에서 SOCIAL_LOGIN_MOCK=1일 때만 켜진다. 운영(NODE_ENV=production)에서는 무조건 꺼진다.
+const socialMock = !isProd && process.env.SOCIAL_LOGIN_MOCK === '1';
+
 const payapp = {
   userid: str('PAYAPP_USERID'),
   linkkey: str('PAYAPP_LINKKEY'),
@@ -83,6 +86,19 @@ export const config = {
     model: str('GEMINI_MODEL', 'gemini-2.5-flash'),
     priceInput: num('GEMINI_PRICE_INPUT_PER_M_USD', 0.3),
     priceOutput: num('GEMINI_PRICE_OUTPUT_PER_M_USD', 2.5),
+  },
+
+  // 소셜 로그인. 값이 비어 있는 쪽은 버튼이 아예 안 보인다.
+  // 화면에 보내는 건 공개 값(구글 클라이언트 ID, 카카오 JavaScript 키)뿐이다.
+  social: {
+    mock: socialMock,
+    googleClientId: str('GOOGLE_CLIENT_ID', socialMock ? 'mock-google-client-id' : ''),
+    kakaoRestApiKey: str('KAKAO_REST_API_KEY', socialMock ? 'mock-kakao-rest-key' : ''),
+    kakaoClientSecret: str('KAKAO_CLIENT_SECRET'), // 카카오 콘솔의 클라이언트 시크릿 [활성화]가 ON이면 꼭 넣는다 (새 앱은 기본 ON)
+    // 폰에서 카카오톡 앱으로 바로 로그인(간편 로그인)할 때 쓰는 카카오 JavaScript SDK 키. 없으면 카카오 웹 로그인 화면으로 간다.
+    kakaoJsKey: socialMock ? '' : str('KAKAO_JS_KEY'),
+    naverClientId: str('NAVER_CLIENT_ID', socialMock ? 'mock-naver-client-id' : ''),
+    naverClientSecret: str('NAVER_CLIENT_SECRET', socialMock ? 'mock-naver-secret' : ''),
   },
 
   meta: {

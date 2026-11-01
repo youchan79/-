@@ -10,6 +10,8 @@ export interface AppConfig {
   paymentProvider: 'payapp' | 'mock' | 'none';
   aiMode: 'claude' | 'mock';
   business: Record<string, string>;
+  // 소셜 로그인: 구글은 클라이언트 ID(null이면 숨김), 카카오·네이버는 켜졌는지, 카카오 JavaScript 키(폰에서 카카오톡 앱 로그인)
+  auth: { google: string | null; kakao: boolean; kakaoJsKey: string | null; naver: boolean; mock: boolean };
 }
 
 export interface SubView {
