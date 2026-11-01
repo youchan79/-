@@ -273,7 +273,7 @@ function RecordingCard() {
       <div className="rounded-[18px] bg-white p-6 text-[#111] shadow-[0_10px_40px_rgba(40,50,120,0.18)]">
         <div className="flex items-center justify-between text-[14px]">
           <span className="flex items-center gap-2 font-medium">
-            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#e5383b]" /> 일반생물학 4주차
+            <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#e5383b]" /> 세포생물학 5주차
           </span>
           <span className="tabular-nums text-[#888]">
             {Math.floor(t / 60)}:{String(t % 60).padStart(2, '0')}
@@ -655,7 +655,7 @@ export default function Landing() {
         <div className="flex flex-wrap items-start justify-between gap-6 border-t border-line pt-10">
           <div>
             <Logo />
-            <p className="mt-2 text-[14px] text-muted">수업자료 PDF와 강의 녹음을 요약·핵심 개념·퀴즈로 바꿔 보세요.</p>
+            <p className="mt-2 text-[14px] text-muted">강의 자료와 녹음을 넣으면 요약·핵심 개념·퀴즈로 정리해 드려요.</p>
           </div>
           <div className="flex gap-5 text-[14px] text-sub">
             <Link to="/terms">이용약관</Link>
