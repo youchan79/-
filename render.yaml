@@ -42,6 +42,19 @@ services:
         sync: false
       - key: PAYAPP_REQUESTKEY
         sync: false
+      # 소셜 로그인. 비워 두면 그 버튼이 안 보인다 (docs/소셜 로그인 설정.md)
+      - key: KAKAO_REST_API_KEY
+        sync: false
+      - key: KAKAO_CLIENT_SECRET
+        sync: false
+      - key: KAKAO_JS_KEY
+        sync: false
+      - key: NAVER_CLIENT_ID
+        sync: false
+      - key: NAVER_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
       - key: BIZ_NAME
         value: 스터디AI
       - key: BIZ_OWNER
