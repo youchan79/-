@@ -32,6 +32,7 @@ import { useApp } from '../lib/app.tsx';
 import { Link, navigate } from '../lib/router.tsx';
 import { Button, Logo } from '../components/ui.tsx';
 import { LanguageSelect, useToggleTheme } from '../components/AppShell.tsx';
+import { HeroMotion } from '../components/HeroMotion.tsx';
 import { BizInfo } from './Subscription.tsx';
 import { REVIEWS, SCHOOL_LOGOS } from '../content/landing.ts';
 import { ArrowDown, Globe, Moon } from 'lucide-react';
@@ -590,7 +591,7 @@ export default function Landing() {
         </div>
         <HeroNote />
         <div className="mx-auto mt-12 max-w-[980px]">
-          <ScaledMiniApp tab="퀴즈" />
+          <HeroMotion renderApp={(tab) => <MiniApp tab={tab} />} />
         </div>
       </section>
 
