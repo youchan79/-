@@ -963,6 +963,24 @@ app.get('/api/checkout/:orderId', requireUser, (req, res) => {
   res.json({ ...p, firstConfirm, sub: subscriptionView(req.user!.id) });
 });
 
+/** 설정 > 구독 > 청구·영수증: 실제로 결제된(환불 포함) 내역만. 영수증은 페이앱이 결제통보로 준 매출전표 주소(csturl)가 있을 때만. */
+app.get('/api/payments', requireUser, (req, res) => {
+  const rows = all(
+    'SELECT order_id, plan, kind, amount, status, paid_at, raw_json FROM payments WHERE user_id = ? AND paid_at IS NOT NULL ORDER BY paid_at DESC LIMIT 100',
+    req.user!.id,
+  );
+  res.json({
+    payments: rows.map((p) => {
+      let receiptUrl: string | null = null;
+      try {
+        const u = JSON.parse(p.raw_json || '{}').csturl;
+        if (typeof u === 'string' && /^https:\/\//.test(u)) receiptUrl = u;
+      } catch {}
+      return { orderId: p.order_id, plan: p.plan, kind: p.kind, amount: p.amount, refunded: p.status === 'canceled', paidAt: p.paid_at, receiptUrl };
+    }),
+  });
+});
+
 app.post(
   '/api/payapp/feedback',
   express.urlencoded({ extended: false, limit: '100kb' }),

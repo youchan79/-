@@ -16,6 +16,7 @@ import Tutor from './pages/Tutor.tsx';
 import { ExamHome, ExamRun } from './pages/Exam.tsx';
 import Settings from './pages/Settings.tsx';
 import Subscription, { MockPayApp } from './pages/Subscription.tsx';
+import { Billing, Refund } from './pages/Billing.tsx';
 import Legal from './pages/Legal.tsx';
 import Admin from './pages/Admin.tsx';
 
@@ -48,6 +49,10 @@ function Routes() {
       return <Settings search={search} />;
     case '/subscription':
       return <Subscription search={search} />;
+    case '/billing':
+      return <Billing />;
+    case '/refund':
+      return <Refund />;
     case '/mock-payapp':
       return <MockPayApp search={search} />;
     case '/terms':

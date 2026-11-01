@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronLeft, CreditCard, LogOut, Search, Send, Settings as Cog, SlidersHorizontal, User } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CreditCard, LogOut, ReceiptText, Search, Send, Settings as Cog, SlidersHorizontal, User } from 'lucide-react';
 import { api, formatDate, formatRenew, won } from '../lib/api.ts';
 import { FeedbackModal } from '../components/AppShell.tsx';
 import { useApp } from '../lib/app.tsx';
@@ -159,6 +159,10 @@ function Subscription() {
           </span>
         </Row>
       )}
+      <button type="button" onClick={() => navigate('/billing')} className="flex w-full items-center gap-2.5 border-b border-line py-4 text-left text-[15px] hover:opacity-80">
+        <ReceiptText size={18} strokeWidth={1.8} /> 청구·영수증
+        <ChevronRight size={16} className="ml-auto text-muted" />
+      </button>
       <div className="flex flex-wrap items-center gap-x-5 gap-y-3 pt-5">
         <Button variant="outline" onClick={() => navigate('/subscription')}>
           구독 관리
