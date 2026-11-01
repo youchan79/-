@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import {
   ChevronDown,
   ClipboardList,
+  FileText,
   FolderClosed,
   Menu,
+  MessageSquare,
   Moon,
   PanelLeft,
   Plus,
@@ -12,11 +14,12 @@ import {
   Smartphone,
   Sparkles,
   Sun,
+  Trash2,
   User,
 } from 'lucide-react';
 import { useApp } from '../lib/app.tsx';
 import { Link, navigate, useLocation } from '../lib/router.tsx';
-import { api } from '../lib/api.ts';
+import { api, type DocSummary } from '../lib/api.ts';
 import { Button, IconButton, Logo, Modal, NewBadge } from './ui.tsx';
 
 const NAV = [
@@ -154,6 +157,56 @@ function SideItem({
   );
 }
 
+/** 서랍 가운데 목록. AI 튜터 화면에서는 채팅 기록, 나머지 화면에서는 내 문서를 보여 준다. */
+function SideList({ path }: { path: string }) {
+  const { me } = useApp();
+  const chats = path.startsWith('/aichat');
+  const [items, setItems] = useState<Array<{ id: string; title: string }> | null>(null);
+  const load = () => {
+    if (!me?.user) return;
+    if (chats) api<{ chats: Array<{ id: string; title: string }> }>('/api/chats').then((r) => setItems(r.chats)).catch(() => setItems([]));
+    else api<{ docs: DocSummary[] }>('/api/docs').then((r) => setItems(r.docs.filter((d) => !d.isSample))).catch(() => setItems([]));
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(load, [me?.user, chats, path]);
+  if (!me?.user) return <div className="flex-1" />;
+  const Icon = chats ? MessageSquare : FileText;
+  return (
+    <div className="mt-5 flex min-h-0 flex-1 flex-col">
+      <div className="px-4 pb-1.5 text-[13px] text-muted">{chats ? '채팅 기록' : '문서'}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
+        {items?.length === 0 && <p className="px-3 py-6 text-center text-[14px] text-muted">{chats ? '아직 나눈 대화가 없어요' : '아직 넣은 자료가 없어요'}</p>}
+        {items?.map((it) => {
+          const to = chats ? `/aichat/${it.id}` : `/doc/${it.id}`;
+          return (
+            <div key={it.id} className={`group flex items-center rounded-lg ${path === to ? 'bg-soft-2 text-ink' : 'text-sub hover:bg-soft-2/70 hover:text-ink'}`}>
+              <Link to={to} className="flex h-9 min-w-0 flex-1 items-center gap-2.5 px-2.5 text-[14px]">
+                <Icon size={16} strokeWidth={1.8} className="shrink-0" />
+                <span className="truncate">{it.title}</span>
+              </Link>
+              {chats && (
+                <button
+                  type="button"
+                  className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:text-red md:hidden md:group-hover:flex"
+                  onClick={async () => {
+                    if (!window.confirm('이 대화를 지울까요?')) return;
+                    await api(`/api/chats/${it.id}`, undefined, { method: 'DELETE' });
+                    if (path === to) navigate('/aichat');
+                    else load();
+                  }}
+                  aria-label="대화 삭제"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onToggle: () => void; onNavigate?: () => void }) {
   const { me, openLogin } = useApp();
   const { path } = useLocation();
@@ -179,7 +232,7 @@ function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onTo
           <SideItem key={n.to} to={n.to} label={n.label} Icon={n.icon} active={n.match(path)} badge={n.badge} collapsed={collapsed} />
         ))}
       </nav>
-      <div className="flex-1" />
+      {collapsed ? <div className="flex-1" /> : <SideList path={path} />}
       <div className={`space-y-0.5 border-t border-line py-2 ${collapsed ? 'px-0' : 'px-1.5'} w-full ${collapsed ? 'flex flex-col items-center' : ''}`}>
         <SideItem to="/settings" label="설정" Icon={Settings} active={path.startsWith('/settings')} collapsed={collapsed} />
         <SideItem label="피드백 남기기" Icon={Send} onClick={() => setFeedback(true)} collapsed={collapsed} />
@@ -197,19 +250,19 @@ function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onTo
         </div>
       )}
       {!collapsed && me?.user && (
-        <div className="border-t border-line px-3 py-3">
-          <Link to="/settings?tab=account" className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-soft-2/70">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-solid text-[13px] font-semibold text-on-solid">
-              {me.user.email[0].toUpperCase()}
+        <div className="flex items-center gap-2 border-t border-line px-3 py-3">
+          <Link to="/settings?tab=account" className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-soft-2/70">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-solid text-[13px] font-semibold text-on-solid">
+              {(me.user.name || me.user.email)[0].toUpperCase()}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[14px]">{me.user.email}</span>
-              <span className="block text-[12px] text-muted">{me.sub?.pro ? 'Pro 플랜' : '기본 플랜'}</span>
+              <span className="block truncate text-[14px]">{me.user.name || me.user.email}</span>
+              <span className="block text-[13px] text-muted">{me.sub?.pro ? 'Pro 플랜' : '기본 플랜'}</span>
             </span>
           </Link>
           {!me.sub?.pro && (
-            <Button size="sm" className="mt-2 w-full" onClick={() => navigate('/subscription')}>
-              Pro로 업그레이드
+            <Button size="sm" variant="outline" className="h-8 shrink-0 px-3 text-[13px]" onClick={() => navigate('/subscription')}>
+              업그레이드
             </Button>
           )}
         </div>

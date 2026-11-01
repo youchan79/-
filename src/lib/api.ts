@@ -36,7 +36,7 @@ export interface Usage {
 }
 
 export interface Me {
-  user: { email: string; phone: string | null; createdAt: string } | null;
+  user: { email: string; name: string | null; provider: 'google' | 'kakao' | 'naver' | null; phone: string | null; createdAt: string } | null;
   sub: SubView | null;
   usage: Usage | null;
   settings: Record<string, string>;
@@ -53,6 +53,7 @@ export interface DocSummary {
   pageCount: number | null;
   createdAt: string;
   isSample: boolean;
+  preview: string | null;
 }
 
 export interface DocDetail extends DocSummary {

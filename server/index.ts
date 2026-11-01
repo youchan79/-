@@ -121,8 +121,10 @@ function meView(req: Request) {
   const placeholder = /^(\w+)_[0-9a-f]+@no-email\.invalid$/.exec(req.user.email);
   const via: Record<string, string> = { kakao: '카카오', naver: '네이버', google: 'Google' };
   const email = placeholder ? `${via[placeholder[1]] ?? placeholder[1]} 계정` : req.user.email;
+  // 화면에 부를 이름과 로그인 방법(소셜 계정이면 제공자)
+  const identity = one('SELECT provider, name FROM user_identities WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', req.user.id);
   return {
-    user: { email, phone: req.user.phone, createdAt: req.user.created_at },
+    user: { email, name: identity?.name || null, provider: identity?.provider ?? null, phone: req.user.phone, createdAt: req.user.created_at },
     sub: subscriptionView(req.user.id),
     usage: usage(req.user.id, req.user.created_at),
     settings: JSON.parse(row?.settings_json || '{}'),
@@ -362,6 +364,17 @@ function loadDoc(req: Request, res: Response, opts: { owner?: boolean } = {}) {
   return d;
 }
 
+/** 카드 미리보기용: 쪽 표시·마크다운 기호를 빼고 앞부분만 */
+const cardPreview = (text: unknown) =>
+  String(text ?? '')
+    .slice(0, 600)
+    .replace(/\[p\.\d+\]/g, '')
+    .replace(/^\s*#+\s*/gm, '')
+    .replace(/[*_`>|]/g, '')
+    .replace(/\n{2,}/g, '\n')
+    .trim()
+    .slice(0, 240);
+
 const docSummary = (d: any) => ({
   id: d.id,
   kind: d.kind,
@@ -373,6 +386,8 @@ const docSummary = (d: any) => ({
   pageCount: d.page_count,
   createdAt: d.created_at,
   isSample: !d.user_id,
+  // 썸네일이 없는 글 자료는 카드에 본문 첫머리를 보여 준다
+  preview: !d.thumb && d.status === 'ready' && ['memo', 'docx', 'pptx', 'pdf'].includes(d.kind) ? cardPreview(d.source_text) : null,
 });
 
 app.get('/api/docs', (req, res) => {
