@@ -732,7 +732,10 @@ app.post('/api/exams', requireUser, (req, res) => {
   const count = [10, 20, 30].includes(Number(req.body?.count)) ? Number(req.body.count) : 20;
   const durationMin = Math.min(180, Math.max(10, Number(req.body?.durationMin) || 40));
   const mode = req.body?.mode === 'variant' ? 'variant' : 'mock';
-  res.json({ id: createExam({ userId: req.user!.id, docIds, count, durationMin, mode }) });
+  const name = typeof req.body?.name === 'string' ? req.body.name.slice(0, 80) : undefined;
+  const difficulty = typeof req.body?.difficulty === 'string' ? req.body.difficulty : undefined;
+  const types = Array.isArray(req.body?.types) ? req.body.types.map(String) : undefined;
+  res.json({ id: createExam({ userId: req.user!.id, docIds, count, durationMin, mode, name, difficulty, types }) });
 });
 
 app.get('/api/exams/:id', requireUser, (req, res) => {
@@ -747,7 +750,10 @@ app.post('/api/exams/:id/start', requireUser, (req, res) => {
 });
 
 app.post('/api/exams/:id/submit', requireUser, (req, res) => {
-  const answers = Array.isArray(req.body?.answers) ? req.body.answers.map((a: unknown) => (typeof a === 'number' ? a : null)) : [];
+  // 객관식·OX·빈칸은 보기 번호, 주관식은 적은 글자
+  const answers = Array.isArray(req.body?.answers)
+    ? req.body.answers.map((a: unknown) => (typeof a === 'number' ? a : typeof a === 'string' ? a.slice(0, 200) : null))
+    : [];
   res.json(submitExam(req.user!.id, req.params.id, answers));
 });
 

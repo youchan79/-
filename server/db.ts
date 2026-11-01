@@ -190,6 +190,8 @@ function addColumn(table: string, column: string, type: string) {
 }
 // 월간 정기결제일 (한국 날짜 1~28, 90 = 말일). 페이앱 rebillCycleMonth와 같은 값.
 addColumn('subscriptions', 'billing_day', 'INTEGER');
+// 시험지 설정(난이도·문제 유형). 예전 시험지는 NULL = 객관식·보통
+addColumn('exams', 'settings_json', 'TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS idx_payments_rebill ON payments(rebill_no)');
 
 export type Row = Record<string, any>;

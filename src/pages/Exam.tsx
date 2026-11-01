@@ -12,6 +12,19 @@ import { Button, Loading, Modal, NewBadge, Segmented, Spinner } from '../compone
 
 const ROMAN = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ', 'Ⅵ', 'Ⅶ', 'Ⅷ', 'Ⅸ', 'Ⅹ'];
 
+type QType = 'choice' | 'ox' | 'blank' | 'short';
+const TYPE_LABEL: Record<QType, string> = { choice: '객관식', ox: 'OX', blank: '빈칸 채우기', short: '주관식' };
+type Answer = number | string | null;
+
+/** 서버(exam.ts isCorrect)와 같은 주관식 채점: 띄어쓰기·문장부호·대소문자 무시, / 로 나눈 정답 중 하나면 정답 */
+const norm = (s: string) => s.toLowerCase().replace(/[\s.,!?'"()[\]{}·~-]/g, '');
+function isRight(q: ExamQ, a: Answer) {
+  if (q.type === 'short') return typeof a === 'string' && !!norm(a) && q.answerText.split('/').map(norm).filter(Boolean).includes(norm(a));
+  return a === q.answer;
+}
+const optionMark = (q: ExamQ, j: number) => (q.type === 'ox' ? q.options[j] : 'ABCD'[j]);
+const answered = (a: Answer) => a !== null && a !== '';
+
 function PaperIllustration() {
   return (
     <div className="relative mx-auto w-full max-w-[320px]">
@@ -55,6 +68,9 @@ function Builder({ onClose, mode }: { onClose: () => void; mode: 'mock' | 'varia
   const [pickerOpen, setPickerOpen] = useState(false);
   const [count, setCount] = useState('20');
   const [minutes, setMinutes] = useState('40');
+  const [name, setName] = useState('');
+  const [difficulty, setDifficulty] = useState('보통');
+  const [types, setTypes] = useState<QType[]>(['choice', 'ox', 'blank']);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState<number | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -75,7 +91,7 @@ function Builder({ onClose, mode }: { onClose: () => void; mode: 'mock' | 'varia
   const create = async () => {
     setBusy(true);
     try {
-      const r = await api<{ id: string }>('/api/exams', { docIds: picked, count: Number(count), durationMin: Number(minutes), mode });
+      const r = await api<{ id: string }>('/api/exams', { docIds: picked, count: Number(count), durationMin: Number(minutes), mode, name: name.trim(), difficulty, types });
       navigate(`/exam/${r.id}`);
     } catch (e) {
       onError(e);
@@ -152,6 +168,43 @@ function Builder({ onClose, mode }: { onClose: () => void; mode: 'mock' | 'varia
 
         <div className="mb-2 mt-7 px-1 text-[14px] text-muted">출제 설정</div>
         <div className="rounded-2xl bg-soft px-4 md:px-5">
+          <div className="border-b border-line py-4">
+            <label htmlFor="exam-name" className="text-[15px] font-medium">
+              시험지 이름
+            </label>
+            <input
+              id="exam-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={80}
+              placeholder="비워 두면 자료 이름으로 지어요"
+              className="mt-2.5 h-11 w-full rounded-full bg-canvas px-4 text-[15px] outline-none placeholder:text-muted focus:ring-1 focus:ring-line"
+            />
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-4">
+            <span className="text-[15px] font-medium">난이도</span>
+            <Segmented className="bg-canvas" value={difficulty} onChange={setDifficulty} options={[['쉬움', '쉬움'], ['보통', '보통'], ['어려움', '어려움']]} />
+          </div>
+          <div className="border-b border-line py-4">
+            <div className="text-[15px] font-medium">문제 유형</div>
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {(Object.keys(TYPE_LABEL) as QType[]).map((t) => {
+                const on = types.includes(t);
+                return (
+                  <button
+                    key={t}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setTypes((v) => (on ? (v.length > 1 ? v.filter((x) => x !== t) : v) : [...v, t]))}
+                    className={`h-10 rounded-full px-4 text-[15px] transition ${on ? 'bg-solid font-medium text-on-solid' : 'bg-canvas text-sub hover:text-ink'}`}
+                  >
+                    {TYPE_LABEL[t]}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[13px] text-muted">하나 이상 골라 주세요. 여러 개면 골고루 섞어 내요.</p>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line py-4">
             <span className="text-[15px] font-medium">문항 수</span>
             <Segmented className="bg-canvas" value={count} onChange={setCount} options={[['10', '10문제'], ['20', '20문제'], ['30', '30문제']]} />
@@ -161,6 +214,7 @@ function Builder({ onClose, mode }: { onClose: () => void; mode: 'mock' | 'varia
             <Segmented className="bg-canvas" value={minutes} onChange={setMinutes} options={[['20', '20분'], ['40', '40분'], ['60', '60분']]} />
           </div>
         </div>
+        <p className="mt-3 px-1 text-[14px] leading-[1.6] text-muted">퀴즈 탭에서 푼 문제와 겹치지 않게 새로 내요. 만드는 데 보통 1~3분, 자료가 많으면 조금 더 걸려요.</p>
       </div>
 
       <div className="sticky bottom-0 border-t border-line bg-canvas">
@@ -326,6 +380,17 @@ export function ExamHome() {
 
 /* ---------- 시험 보기 ---------- */
 
+interface ExamQ {
+  source: number;
+  type?: QType;
+  question: string;
+  options: string[];
+  answer: number;
+  answerText: string;
+  explanation: string;
+  ref: string;
+}
+
 interface ExamData {
   id: string;
   title: string;
@@ -334,8 +399,9 @@ interface ExamData {
   durationMin: number;
   questionCount: number;
   startedAt: string | null;
-  exam: { questions: Array<{ source: number; question: string; options: string[]; answer: number; explanation: string; ref: string }>; sources: string[] } | null;
-  answers: Array<number | null> | null;
+  exam: { questions: ExamQ[]; sources: string[] } | null;
+  settings: { difficulty: string; types: QType[] } | null;
+  answers: Answer[] | null;
   result: { correct: number; total: number; score: number; bySource: Array<{ title: string; correct: number; total: number }>; wrong: number[] } | null;
 }
 
@@ -349,12 +415,18 @@ function useCountdown(startedAt: string | null, minutes: number) {
   return Math.max(0, Math.round((new Date(startedAt).getTime() + minutes * 60_000 - now) / 1000));
 }
 
-function ExamPaper({ data, onSubmit }: { data: ExamData; onSubmit: (answers: Array<number | null>) => void }) {
+function ExamPaper({ data, onSubmit }: { data: ExamData; onSubmit: (answers: Answer[]) => void }) {
   const qs = data.exam!.questions;
-  const [answers, setAnswers] = useProgress<Array<number | null>>(`exam:${data.id}`, Array(qs.length).fill(null));
+  const [answers, setAnswers] = useProgress<Answer[]>(`exam:${data.id}`, Array(qs.length).fill(null));
   const [sheet, setSheet] = useState(false);
   const left = useCountdown(data.startedAt, data.durationMin);
-  const answered = answers.filter((a) => a !== null).length;
+  const done = answers.filter(answered).length;
+  const setAnswer = (i: number, v: Answer) =>
+    setAnswers((a) => {
+      const n = [...a];
+      n[i] = v;
+      return n;
+    });
 
   useEffect(() => {
     if (left === 0 && data.startedAt) onSubmit(answers);
@@ -382,9 +454,9 @@ function ExamPaper({ data, onSubmit }: { data: ExamData; onSubmit: (answers: Arr
           {mm}:{ss}
         </span>
         <Button size="sm" variant="outline" onClick={() => setSheet(true)}>
-          답안지 {answered}/{qs.length}
+          답안지 {done}/{qs.length}
         </Button>
-        <Button size="sm" onClick={() => window.confirm(answered < qs.length ? `${qs.length - answered}문제를 안 풀었어요. 제출할까요?` : '제출할까요?') && onSubmit(answers)}>
+        <Button size="sm" onClick={() => window.confirm(done < qs.length ? `${qs.length - done}문제를 안 풀었어요. 제출할까요?` : '제출할까요?') && onSubmit(answers)}>
           제출
         </Button>
       </header>
@@ -401,29 +473,49 @@ function ExamPaper({ data, onSubmit }: { data: ExamData; onSubmit: (answers: Arr
                     <span>{i + 1}.</span>
                     <span>{qs[i].question}</span>
                   </div>
-                  <div className="mt-3 space-y-2 pl-6">
-                    {qs[i].options.map((o, j) => (
-                      <button
-                        key={j}
-                        type="button"
-                        onClick={() =>
-                          setAnswers((a) => {
-                            const n = [...a];
-                            n[i] = n[i] === j ? null : j;
-                            return n;
-                          })
-                        }
-                        className="flex w-full items-start gap-3 rounded-xl px-2 py-1.5 text-left hover:bg-soft"
-                      >
-                        <span
-                          className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[12px] ${answers[i] === j ? 'border-solid bg-solid text-on-solid' : 'border-line text-muted'}`}
+                  {qs[i].type === 'short' ? (
+                    <div className="mt-3 pl-6">
+                      <input
+                        value={typeof answers[i] === 'string' ? (answers[i] as string) : ''}
+                        onChange={(e) => setAnswer(i, e.target.value || null)}
+                        maxLength={200}
+                        placeholder="답을 적어 주세요"
+                        className="h-12 w-full rounded-xl border border-line bg-canvas px-4 text-[15px] outline-none focus:border-ink"
+                      />
+                    </div>
+                  ) : qs[i].type === 'ox' ? (
+                    <div className="mt-3 flex gap-3 pl-6">
+                      {qs[i].options.map((o, j) => (
+                        <button
+                          key={j}
+                          type="button"
+                          aria-pressed={answers[i] === j}
+                          onClick={() => setAnswer(i, answers[i] === j ? null : j)}
+                          className={`h-12 w-20 rounded-xl border text-[18px] font-semibold ${answers[i] === j ? 'border-solid bg-solid text-on-solid' : 'border-line text-sub hover:bg-soft'}`}
                         >
-                          {'ABCD'[j]}
-                        </span>
-                        <span className="text-[15px] leading-[1.6]">{o}</span>
-                      </button>
-                    ))}
-                  </div>
+                          {o}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-2 pl-6">
+                      {qs[i].options.map((o, j) => (
+                        <button
+                          key={j}
+                          type="button"
+                          onClick={() => setAnswer(i, answers[i] === j ? null : j)}
+                          className="flex w-full items-start gap-3 rounded-xl px-2 py-1.5 text-left hover:bg-soft"
+                        >
+                          <span
+                            className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[12px] ${answers[i] === j ? 'border-solid bg-solid text-on-solid' : 'border-line text-muted'}`}
+                          >
+                            {'ABCD'[j]}
+                          </span>
+                          <span className="text-[15px] leading-[1.6]">{o}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -442,10 +534,10 @@ function ExamPaper({ data, onSubmit }: { data: ExamData; onSubmit: (answers: Arr
                 setSheet(false);
                 document.getElementById(`q${i}`)?.scrollIntoView({ behavior: 'smooth' });
               }}
-              className={`h-11 rounded-xl text-[14px] tabular-nums ${answers[i] !== null ? 'bg-solid text-on-solid' : 'bg-soft text-sub'}`}
+              className={`h-11 rounded-xl text-[14px] tabular-nums ${answered(answers[i]) ? 'bg-solid text-on-solid' : 'bg-soft text-sub'}`}
             >
               {i + 1}
-              {answers[i] !== null && <span className="ml-1 text-[11px] opacity-70">{'ABCD'[answers[i]!]}</span>}
+              {answered(answers[i]) && <span className="ml-1 text-[13px] opacity-70">{typeof answers[i] === 'number' ? optionMark(qs[i], answers[i] as number) : '✓'}</span>}
             </button>
           ))}
         </div>
@@ -458,7 +550,8 @@ function Result({ data }: { data: ExamData }) {
   const r = data.result!;
   const qs = data.exam!.questions;
   const [retry, setRetry] = useState(false);
-  const [picks, setPicks] = useState<Record<number, number>>({});
+  const [picks, setPicks] = useState<Record<number, Answer>>({});
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
   return (
     <AppShell title={data.title}>
       <div className="mx-auto max-w-[760px] px-5 pb-20 pt-6">
@@ -507,6 +600,36 @@ function Result({ data }: { data: ExamData }) {
                 <span>{i + 1}.</span>
                 <span>{q.question}</span>
               </div>
+              {q.type === 'short' ? (
+                <div className="mt-3 space-y-2 pl-6 text-[15px]">
+                  {retry && pick === undefined ? (
+                    <form
+                      className="flex gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (drafts[i]?.trim()) setPicks((p) => ({ ...p, [i]: drafts[i] }));
+                      }}
+                    >
+                      <input
+                        value={drafts[i] ?? ''}
+                        onChange={(e) => setDrafts((d) => ({ ...d, [i]: e.target.value }))}
+                        placeholder="답을 적어 주세요"
+                        className="h-11 min-w-0 flex-1 rounded-xl border border-line bg-canvas px-4 outline-none focus:border-ink"
+                      />
+                      <Button type="submit" size="sm" className="h-11">
+                        확인
+                      </Button>
+                    </form>
+                  ) : (
+                    <>
+                      <div className={retry && isRight(q, pick ?? null) ? 'text-green' : 'text-red'}>
+                        내 답: {String((retry ? pick : data.answers?.[i]) ?? '') || '(안 씀)'}
+                      </div>
+                      <div className="text-green">정답: {q.answerText.split('/').join(' 또는 ')}</div>
+                    </>
+                  )}
+                </div>
+              ) : (
               <div className="mt-3 space-y-1.5 pl-6">
                 {q.options.map((o, j) => {
                   const show = retry ? pick !== undefined : true;
@@ -525,13 +648,14 @@ function Result({ data }: { data: ExamData }) {
                           show && isAns ? 'border-green bg-green text-white' : show && mine ? 'border-red bg-red text-white' : 'border-line text-muted'
                         }`}
                       >
-                        {show && isAns ? <Check size={13} /> : show && mine ? <X size={13} /> : 'ABCD'[j]}
+                        {show && isAns ? <Check size={13} /> : show && mine ? <X size={13} /> : optionMark(q, j)}
                       </span>
                       <span className="text-[15px] leading-[1.6]">{o}</span>
                     </button>
                   );
                 })}
               </div>
+              )}
               {(!retry || pick !== undefined) && <p className="mt-3 rounded-xl bg-soft p-4 text-[14px] leading-[1.65] text-sub">{q.explanation}</p>}
             </div>
           );
@@ -586,8 +710,9 @@ export function ExamRun({ id }: { id: string }) {
           <ClipboardList size={28} className="mx-auto" />
           <h1 className="mt-4 text-[24px] font-semibold tracking-tight">{data.title}</h1>
           <p className="mt-2 text-[15px] text-sub">
-            {data.questionCount}문제 · 제한 시간 {data.durationMin}분
+            {data.questionCount}문제 · 제한 시간 {data.durationMin}분{data.settings ? ` · ${data.settings.difficulty}` : ''}
           </p>
+          {data.settings && <p className="mt-1 text-[14px] text-muted">{data.settings.types.map((t) => TYPE_LABEL[t]).join(' · ')}</p>}
           <p className="mt-1 text-[14px] text-muted">시작하면 시간이 흐르고, 시간이 끝나면 자동으로 제출돼요.</p>
           <Button
             size="lg"

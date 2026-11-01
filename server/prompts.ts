@@ -181,13 +181,15 @@ const rawSchemas = {
           type: 'object',
           properties: {
             source: { type: 'integer', description: '출제한 자료 번호 (1부터)' },
+            type: { type: 'string', enum: ['choice', 'ox', 'blank', 'short'], description: '문제 유형' },
             question: str,
-            options: { type: 'array', items: str, description: '보기 정확히 4개' },
-            answer: { type: 'integer', description: '정답 보기 번호 0~3' },
+            options: { type: 'array', items: str, description: 'choice·blank는 보기 4개, ox는 ["O", "X"], short는 빈 배열' },
+            answer: { type: 'integer', description: '정답 보기 번호(0부터). short는 -1' },
+            answerText: { type: 'string', description: 'short의 정답. 여러 표현을 인정하면 / 로 구분. 다른 유형은 빈 문자열' },
             explanation: str,
             ref: str,
           },
-          required: ['source', 'question', 'options', 'answer', 'explanation', 'ref'],
+          required: ['source', 'type', 'question', 'options', 'answer', 'answerText', 'explanation', 'ref'],
         },
       },
     },
@@ -219,12 +221,36 @@ export function setPrompt(kind: SetKind, opts: { count: number; focus?: string; 
   return `위 [자료]로 다음을 만든다.\n${task}${focus}${diff}${avoid}${opts.style ?? ''}`;
 }
 
-export function examPrompt(sources: Array<{ title: string; text: string }>, count: number, avoid: string[]) {
+export type ExamType = 'choice' | 'ox' | 'blank' | 'short';
+export type ExamDifficulty = '쉬움' | '보통' | '어려움';
+export const EXAM_TYPES: ExamType[] = ['choice', 'ox', 'blank', 'short'];
+
+const TYPE_RULE: Record<ExamType, string> = {
+  choice: 'choice(객관식): 보기 4개, answer는 정답 번호 0~3, 정답 위치를 고르게 섞는다.',
+  ox: 'ox(OX): 맞는지 틀린지 판단할 진술 한 문장, options는 ["O", "X"], answer는 O면 0, X면 1. O와 X가 반반 정도 나오게.',
+  blank: 'blank(빈칸 채우기): 자료의 핵심 문장에서 핵심어 자리를 ____ 로 비운다. options는 들어갈 말 후보 4개, answer는 0~3.',
+  short: 'short(주관식 단답형): 한두 단어로 답하는 질문. options는 [], answer는 -1, answerText에 정답(같은 뜻의 다른 표기는 / 로 구분).',
+};
+
+const DIFFICULTY_RULE: Record<ExamDifficulty, string> = {
+  쉬움: '난이도는 쉬움: 정의와 기본 사실을 확인하는 문제 위주로, 오답 보기는 분명히 구별되게.',
+  보통: '난이도는 보통: 쉬운 문제 30%, 보통 50%, 어려운 문제 20%.',
+  어려움: '난이도는 어려움: 개념을 적용·비교·추론하는 문제 위주로, 오답 보기도 헷갈릴 만큼 그럴듯하게.',
+};
+
+/** 시험지 설정(난이도·문제 유형)을 프롬프트 지시로 바꾼다 */
+export function examRules(opts: { difficulty: ExamDifficulty; types: ExamType[] }) {
+  return `- ${DIFFICULTY_RULE[opts.difficulty]}
+- 아래 유형만 쓰고, 여러 유형이면 고르게 섞는다. type에 유형을 적는다. 다른 유형의 칸은 규칙대로 비운다(answerText는 short가 아니면 빈 문자열).
+${opts.types.map((t) => `  · ${TYPE_RULE[t]}`).join('\n')}`;
+}
+
+export function examPrompt(sources: Array<{ title: string; text: string }>, count: number, avoid: string[], opts: { difficulty: ExamDifficulty; types: ExamType[] }) {
   const per = Math.max(20_000, Math.floor(110_000 / sources.length));
   const body = sources.map((s, i) => `[자료 ${i + 1}: ${s.title}]\n${s.text.slice(0, per)}`).join('\n\n');
-  return `아래 자료들로 실제 대학 시험 같은 객관식 4지선다 모의고사 ${count}문제를 만든다.
+  return `아래 자료들로 실제 대학 시험 같은 모의고사 ${count}문제를 만든다.
 - 자료별 분량에 비례해 고르게 출제하고, source에 자료 번호를 적는다.
-- 쉬운 문제 30%, 보통 50%, 어려운 문제 20%.
+${examRules(opts)}
 - 이미 풀어 본 아래 문제와 겹치지 않는, 처음 보는 문제로 낸다:
 ${avoid.slice(0, 60).map((q) => `  · ${q}`).join('\n') || '  (없음)'}
 
@@ -341,19 +367,20 @@ export function mockSet(kind: SetKind, source: string, count: number): unknown {
   };
 }
 
-export function mockExam(sources: Array<{ title: string; text: string }>, count: number): unknown {
+export function mockExam(sources: Array<{ title: string; text: string }>, count: number, opts: { difficulty: ExamDifficulty; types: ExamType[] }): unknown {
   return {
     questions: Array.from({ length: count }, (_, i) => {
       const s = i % sources.length;
       const ss = sentences(sources[s].text);
-      return {
-        source: s + 1,
-        question: `(가짜 모의고사 ${i + 1}) ${sources[s].title}에 대한 설명으로 옳은 것은?`,
-        options: [0, 1, 2, 3].map((k) => short(pick(ss, i * 4 + k), 40)),
-        answer: (i * 3) % 4,
-        explanation: '개발용 가짜 해설입니다.',
-        ref: '',
-      };
+      const type = opts.types[i % opts.types.length];
+      const head = `(가짜 ${opts.difficulty} ${i + 1})`;
+      const base = { source: s + 1, type, answerText: '', explanation: `개발용 가짜 해설입니다. (난이도 ${opts.difficulty})`, ref: '' };
+      if (type === 'ox') return { ...base, question: `${head} ${short(pick(ss, i), 50)}`, options: ['O', 'X'], answer: i % 2 };
+      if (type === 'short') return { ...base, question: `${head} ${sources[s].title}의 핵심 용어 하나를 쓰시오.`, options: [], answer: -1, answerText: '핵심/핵심 개념' };
+      if (type === 'blank') {
+        return { ...base, question: `${head} ${short(pick(ss, i), 30)} 의 빈칸 ____ 에 들어갈 말은?`, options: [0, 1, 2, 3].map((k) => short(pick(ss, i * 4 + k), 12)), answer: (i * 3) % 4 };
+      }
+      return { ...base, question: `${head} ${sources[s].title}에 대한 설명으로 옳은 것은?`, options: [0, 1, 2, 3].map((k) => short(pick(ss, i * 4 + k), 40)), answer: (i * 3) % 4 };
     }),
   };
 }
