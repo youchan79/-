@@ -20,7 +20,7 @@ export default function Record() {
     const create = async () => {
       started.current = true;
       try {
-        const r = await api<{ id: string }>('/api/docs/recording', {});
+        const r = await api<{ id: string }>('/api/docs/recording', { folderId: new URLSearchParams(location.search).get('folder') });
         navigate(`/doc/${r.id}`, { replace: true });
       } catch (e) {
         onError(e);

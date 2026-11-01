@@ -41,7 +41,7 @@ export function useUploader() {
   return { progress, run };
 }
 
-export function YoutubeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function YoutubeModal({ open, onClose, folderId }: { open: boolean; onClose: () => void; folderId?: string | null }) {
   const { config } = useApp();
   const [url, setUrl] = useState('');
   const [script, setScript] = useState('');
@@ -52,7 +52,7 @@ export function YoutubeModal({ open, onClose }: { open: boolean; onClose: () => 
     e.preventDefault();
     setBusy(true);
     try {
-      const r = await api<{ id: string }>('/api/docs/youtube', { url, transcript: script });
+      const r = await api<{ id: string }>('/api/docs/youtube', { url, transcript: script, folderId });
       onClose();
       setUrl('');
       setScript('');

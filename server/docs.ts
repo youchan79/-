@@ -448,8 +448,22 @@ export function recoverInterrupted() {
   run("UPDATE exams SET status = 'error', error = '중단됨' WHERE status = 'generating'");
 }
 
+/** 휴지통 보관 기간. 지난 문서는 파일·학습 자료·튜터 대화까지 완전히 지운다. */
+export const TRASH_DAYS = 7;
+
+export function purgeTrash() {
+  const cutoff = new Date(Date.now() - TRASH_DAYS * 86400_000).toISOString();
+  for (const d of all('SELECT id FROM documents WHERE deleted_at IS NOT NULL AND deleted_at < ?', cutoff)) deleteDoc(d.id);
+}
+
 export function deleteDoc(docId: string) {
   fs.rmSync(path.join(uploadsDir, docId), { recursive: true, force: true });
   run('DELETE FROM chats WHERE doc_id = ?', docId);
   run('DELETE FROM documents WHERE id = ?', docId);
+}
+
+/** 내 폴더면 그 id, 아니면 null(맨 위) */
+export function ownFolder(userId: string, folderId: unknown): string | null {
+  if (typeof folderId !== 'string' || !folderId) return null;
+  return one('SELECT id FROM folders WHERE id = ? AND user_id = ?', folderId, userId)?.id ?? null;
 }

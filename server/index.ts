@@ -38,7 +38,10 @@ import {
   ensureMaterial,
   getMaterial,
   listSets,
+  ownFolder,
+  purgeTrash,
   recoverInterrupted,
+  TRASH_DAYS,
 } from './docs.ts';
 import { LimitError, assertCanExam, assertCanTutor, assertCanUpload, isPro, maxUploadBytes, usage } from './plan.ts';
 import { createExam, getExam, listExams, startExam, submitExam } from './exam.ts';
@@ -77,6 +80,9 @@ import type { MaterialKind, SetKind } from './prompts.ts';
 assertProdConfig();
 seedSamples();
 recoverInterrupted();
+// 휴지통 7일 지난 문서 완전 삭제: 켤 때 한 번, 그 뒤 한 시간마다
+purgeTrash();
+setInterval(purgeTrash, 3600_000).unref();
 
 const app = express();
 app.set('trust proxy', true);
@@ -327,6 +333,7 @@ app.post(
     run('DELETE FROM chats WHERE user_id = ?', userId);
     run('DELETE FROM exams WHERE user_id = ?', userId);
     run('DELETE FROM progress WHERE user_id = ?', userId);
+    run('DELETE FROM folders WHERE user_id = ?', userId);
     run('DELETE FROM user_identities WHERE user_id = ?', userId); // 탈퇴한 계정으로 다시 소셜 로그인되지 않게
     // 결제 기록은 전자상거래법상 5년 보관한다. 계정 식별 정보만 지운다.
     run("UPDATE users SET email = ?, password_hash = '', phone = NULL, settings_json = '{}' WHERE id = ?", `deleted_${userId}@deleted`, userId);
@@ -353,7 +360,7 @@ app.post('/api/track', (req, res) => {
 /* ---------- 문서 ---------- */
 
 function loadDoc(req: Request, res: Response, opts: { owner?: boolean } = {}) {
-  const d = one('SELECT * FROM documents WHERE id = ?', req.params.id);
+  const d = one('SELECT * FROM documents WHERE id = ? AND deleted_at IS NULL', req.params.id);
   const isSample = d && !d.user_id;
   if (!d || (!isSample && d.user_id !== req.user?.id)) {
     res.status(404).json({ error: '문서를 찾을 수 없어요.' });
@@ -364,6 +371,12 @@ function loadDoc(req: Request, res: Response, opts: { owner?: boolean } = {}) {
     return null;
   }
   return d;
+}
+
+/** 폴더 안에서 만든 새 문서는 그 폴더에 넣는다(내 폴더일 때만) */
+function placeInFolder(docId: string, req: Request) {
+  const f = ownFolder(req.user!.id, req.body?.folderId);
+  if (f) run('UPDATE documents SET folder_id = ? WHERE id = ?', f, docId);
 }
 
 /** 카드 미리보기용: 쪽 표시·마크다운 기호를 빼고 앞부분만 */
@@ -388,13 +401,15 @@ const docSummary = (d: any) => ({
   pageCount: d.page_count,
   createdAt: d.created_at,
   isSample: !d.user_id,
+  folderId: d.folder_id ?? null,
+  favorite: !!d.favorite_at,
   // 썸네일이 없는 글 자료는 카드에 본문 첫머리를 보여 준다
   preview: !d.thumb && d.status === 'ready' && ['memo', 'docx', 'pptx', 'pdf'].includes(d.kind) ? cardPreview(d.source_text) : null,
 });
 
 app.get('/api/docs', (req, res) => {
   const mine = req.user
-    ? all('SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC', req.user.id)
+    ? all('SELECT * FROM documents WHERE user_id = ? AND deleted_at IS NULL ORDER BY created_at DESC', req.user.id)
     : [];
   const samples = all('SELECT * FROM documents WHERE user_id IS NULL ORDER BY created_at ASC');
   res.json({ docs: [...mine, ...samples].map(docSummary) });
@@ -438,6 +453,7 @@ app.post(
         durationSec: Number(b.duration) || null,
         liveTranscript: typeof b.transcript === 'string' && b.transcript.trim() ? b.transcript.slice(0, 200_000) : null,
       });
+      placeInFolder(id, req);
       logFunnel('upload', req.anonId, req.user!.id);
       res.json({ id });
     } catch (e) {
@@ -453,6 +469,7 @@ app.post(
   h(async (req, res) => {
     assertCanUpload(req.user!.id, req.user!.created_at, 'youtube');
     const id = await createYoutubeDoc(req.user!.id, String(req.body?.url ?? ''), typeof req.body?.transcript === 'string' ? req.body.transcript : undefined);
+    placeInFolder(id, req);
     logFunnel('upload', req.anonId, req.user!.id);
     res.json({ id });
   }),
@@ -460,6 +477,7 @@ app.post(
 
 app.post('/api/docs/recording', requireUser, (req, res) => {
   const id = createRecordingDoc(req.user!.id);
+  placeInFolder(id, req);
   res.json({ id });
 });
 
@@ -505,6 +523,7 @@ app.post(
 
 app.post('/api/docs/memo', requireUser, (req, res) => {
   const id = createMemoDoc(req.user!.id, String(req.body?.title ?? ''), String(req.body?.text ?? ''));
+  placeInFolder(id, req);
   logFunnel('upload', req.anonId, req.user!.id);
   res.json({ id });
 });
@@ -538,13 +557,93 @@ app.patch('/api/docs/:id', requireUser, (req, res) => {
   if (!d) return;
   if (typeof req.body?.title === 'string' && req.body.title.trim()) run('UPDATE documents SET title = ? WHERE id = ?', req.body.title.trim().slice(0, 120), d.id);
   if (typeof req.body?.memo === 'string') run('UPDATE documents SET memo = ? WHERE id = ?', req.body.memo.slice(0, 50_000), d.id);
+  // 이동: 내 폴더 id 또는 null(맨 위)
+  if (req.body && 'folderId' in req.body) run('UPDATE documents SET folder_id = ? WHERE id = ?', ownFolder(req.user!.id, req.body.folderId), d.id);
+  if (typeof req.body?.favorite === 'boolean') run('UPDATE documents SET favorite_at = ? WHERE id = ?', req.body.favorite ? nowIso() : null, d.id);
+  res.json({ ok: true });
+});
+
+/* ---------- 폴더 ---------- */
+
+app.get('/api/folders', requireUser, (req, res) => {
+  const rows = all(
+    `SELECT f.id, f.name, f.created_at,
+       (SELECT COUNT(*) FROM documents d WHERE d.folder_id = f.id AND d.deleted_at IS NULL) AS count
+     FROM folders f WHERE f.user_id = ? ORDER BY f.name COLLATE NOCASE`,
+    req.user!.id,
+  );
+  res.json({ folders: rows.map((f) => ({ id: f.id, name: f.name, count: f.count, createdAt: f.created_at })) });
+});
+
+const folderName = (v: unknown) => (typeof v === 'string' ? v.trim().slice(0, 60) : '');
+
+app.post('/api/folders', requireUser, (req, res) => {
+  const name = folderName(req.body?.name) || '새 폴더';
+  if ((one('SELECT COUNT(*) AS c FROM folders WHERE user_id = ?', req.user!.id)?.c ?? 0) >= 200) return res.status(400).json({ error: '폴더는 200개까지 만들 수 있어요.' });
+  const id = newId('fd');
+  run('INSERT INTO folders (id, user_id, name, created_at) VALUES (?, ?, ?, ?)', id, req.user!.id, name, nowIso());
+  res.json({ id, name });
+});
+
+app.patch('/api/folders/:id', requireUser, (req, res) => {
+  const id = ownFolder(req.user!.id, req.params.id);
+  const name = folderName(req.body?.name);
+  if (!id) return res.status(404).json({ error: '폴더를 찾을 수 없어요.' });
+  if (!name) return res.status(400).json({ error: '폴더 이름을 적어 주세요.' });
+  run('UPDATE folders SET name = ? WHERE id = ?', name, id);
+  res.json({ ok: true });
+});
+
+// 폴더를 지우면 안의 문서는 휴지통으로 간다(7일 안에 되살리면 맨 위로 돌아옴)
+app.delete('/api/folders/:id', requireUser, (req, res) => {
+  const id = ownFolder(req.user!.id, req.params.id);
+  if (!id) return res.status(404).json({ error: '폴더를 찾을 수 없어요.' });
+  run('UPDATE documents SET deleted_at = ?, folder_id = NULL WHERE folder_id = ? AND user_id = ? AND deleted_at IS NULL', nowIso(), id, req.user!.id);
+  run('UPDATE documents SET folder_id = NULL WHERE folder_id = ?', id);
+  run('DELETE FROM folders WHERE id = ?', id);
   res.json({ ok: true });
 });
 
 app.delete('/api/docs/:id', requireUser, (req, res) => {
   const d = loadDoc(req, res, { owner: true });
   if (!d) return;
+  // 바로 지우지 않고 휴지통으로. TRASH_DAYS 뒤 purgeTrash가 완전히 지운다.
+  run('UPDATE documents SET deleted_at = ? WHERE id = ?', nowIso(), d.id);
+  res.json({ ok: true });
+});
+
+/* ---------- 휴지통 ---------- */
+
+app.get('/api/trash', requireUser, (req, res) => {
+  const rows = all('SELECT * FROM documents WHERE user_id = ? AND deleted_at IS NOT NULL ORDER BY deleted_at DESC', req.user!.id);
+  res.json({
+    days: TRASH_DAYS,
+    docs: rows.map((d) => ({ ...docSummary(d), deletedAt: d.deleted_at, purgeAt: addDays(d.deleted_at, TRASH_DAYS) })),
+  });
+});
+
+function loadTrashed(req: Request, res: Response) {
+  const d = one('SELECT id FROM documents WHERE id = ? AND user_id = ? AND deleted_at IS NOT NULL', req.params.id, req.user!.id);
+  if (!d) res.status(404).json({ error: '휴지통에 없는 문서예요.' });
+  return d;
+}
+
+app.post('/api/trash/:id/restore', requireUser, (req, res) => {
+  const d = loadTrashed(req, res);
+  if (!d) return;
+  run('UPDATE documents SET deleted_at = NULL WHERE id = ?', d.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/trash/:id', requireUser, (req, res) => {
+  const d = loadTrashed(req, res);
+  if (!d) return;
   deleteDoc(d.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/trash', requireUser, (req, res) => {
+  for (const d of all('SELECT id FROM documents WHERE user_id = ? AND deleted_at IS NOT NULL', req.user!.id)) deleteDoc(d.id);
   res.json({ ok: true });
 });
 

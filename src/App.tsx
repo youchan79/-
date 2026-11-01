@@ -8,6 +8,7 @@ import Landing from './pages/Landing.tsx';
 import Documents from './pages/Documents.tsx';
 import AddContent from './pages/AddContent.tsx';
 import Record from './pages/Record.tsx';
+import Trash from './pages/Trash.tsx';
 import MemoNew from './pages/MemoNew.tsx';
 import DocDetail from './pages/DocDetail.tsx';
 import Tutor from './pages/Tutor.tsx';
@@ -35,6 +36,8 @@ function Routes() {
       return <AddContent />;
     case '/record':
       return <Record />;
+    case '/trash':
+      return <Trash />;
     case '/memo/new':
       return <MemoNew />;
     case '/exam':

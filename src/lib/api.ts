@@ -54,6 +54,8 @@ export interface DocSummary {
   createdAt: string;
   isSample: boolean;
   preview: string | null;
+  folderId: string | null;
+  favorite: boolean;
 }
 
 export interface DocDetail extends DocSummary {

@@ -192,6 +192,18 @@ function addColumn(table: string, column: string, type: string) {
 addColumn('subscriptions', 'billing_day', 'INTEGER');
 // 시험지 설정(난이도·문제 유형). 예전 시험지는 NULL = 객관식·보통
 addColumn('exams', 'settings_json', 'TEXT');
+// 휴지통: 지운 시각. NULL이면 휴지통이 아님(예전 문서는 모두 NULL이라 그대로 보임)
+addColumn('documents', 'deleted_at', 'TEXT');
+// 폴더·즐겨찾기: 새 표와 새 열만 더한다. 예전 문서는 folder_id NULL = 맨 위(문서)에 그대로
+db.exec(`CREATE TABLE IF NOT EXISTS folders (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL
+)`);
+db.exec('CREATE INDEX IF NOT EXISTS idx_folders_user ON folders(user_id)');
+addColumn('documents', 'folder_id', 'TEXT');
+addColumn('documents', 'favorite_at', 'TEXT');
 db.exec('CREATE INDEX IF NOT EXISTS idx_payments_rebill ON payments(rebill_no)');
 
 export type Row = Record<string, any>;

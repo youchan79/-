@@ -4,13 +4,13 @@ import {
   ClipboardList,
   FileText,
   FolderClosed,
+  Star,
   Menu,
   MessageSquare,
   Moon,
   PanelLeft,
   Plus,
   Send,
-  Settings,
   Smartphone,
   Sparkles,
   Sun,
@@ -157,59 +157,85 @@ function SideItem({
   );
 }
 
-/** 서랍 가운데 목록. AI 튜터 화면에서는 채팅 기록, 나머지 화면에서는 내 문서를 보여 준다. */
-function SideList({ path }: { path: string }) {
+type SideRow = { id: string; title: string; to: string; icon: 'doc' | 'chat' | 'folder' | 'star' };
+const SIDE_ICON = { doc: FileText, chat: MessageSquare, folder: FolderClosed, star: Star };
+
+/**
+ * 서랍 가운데 목록. AI 튜터 화면에서는 채팅 기록,
+ * 나머지 화면에서는 즐겨찾기(있을 때) → 폴더 → 맨 위 문서.
+ */
+function SideList({ path, search }: { path: string; search: string }) {
   const { me } = useApp();
   const chats = path.startsWith('/aichat');
-  const [items, setItems] = useState<Array<{ id: string; title: string }> | null>(null);
+  const [items, setItems] = useState<SideRow[] | null>(null);
+  const [favorites, setFavorites] = useState<SideRow[]>([]);
   const load = () => {
     if (!me?.user) return;
-    if (chats) api<{ chats: Array<{ id: string; title: string }> }>('/api/chats').then((r) => setItems(r.chats)).catch(() => setItems([]));
-    else api<{ docs: DocSummary[] }>('/api/docs').then((r) => setItems(r.docs.filter((d) => !d.isSample))).catch(() => setItems([]));
+    if (chats) {
+      api<{ chats: Array<{ id: string; title: string }> }>('/api/chats')
+        .then((r) => setItems(r.chats.map((c) => ({ id: c.id, title: c.title, to: `/aichat/${c.id}`, icon: 'chat' as const }))))
+        .catch(() => setItems([]));
+      return;
+    }
+    Promise.all([api<{ docs: DocSummary[] }>('/api/docs'), api<{ folders: Array<{ id: string; name: string }> }>('/api/folders')])
+      .then(([d, f]) => {
+        const mine = d.docs.filter((x) => !x.isSample);
+        setFavorites(mine.filter((x) => x.favorite).map((x) => ({ id: `fav-${x.id}`, title: x.title, to: `/doc/${x.id}`, icon: 'star' as const })));
+        setItems([
+          ...f.folders.map((x) => ({ id: x.id, title: x.name, to: `/home?folder=${x.id}`, icon: 'folder' as const })),
+          ...mine.filter((x) => !x.folderId).map((x) => ({ id: x.id, title: x.title, to: `/doc/${x.id}`, icon: 'doc' as const })),
+        ]);
+      })
+      .catch(() => setItems([]));
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(load, [me?.user, chats, path]);
+  useEffect(load, [me?.user, chats, path, search]);
   if (!me?.user) return <div className="flex-1" />;
-  const Icon = chats ? MessageSquare : FileText;
-  return (
-    <div className="mt-5 flex min-h-0 flex-1 flex-col">
-      <div className="px-4 pb-1.5 text-[13px] text-muted">{chats ? '채팅 기록' : '문서'}</div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
-        {items?.length === 0 && <p className="px-3 py-6 text-center text-[14px] text-muted">{chats ? '아직 나눈 대화가 없어요' : '아직 넣은 자료가 없어요'}</p>}
-        {items?.map((it) => {
-          const to = chats ? `/aichat/${it.id}` : `/doc/${it.id}`;
-          return (
-            <div key={it.id} className={`group flex items-center rounded-lg ${path === to ? 'bg-soft-2 text-ink' : 'text-sub hover:bg-soft-2/70 hover:text-ink'}`}>
-              <Link to={to} className="flex h-9 min-w-0 flex-1 items-center gap-2.5 px-2.5 text-[14px]">
-                <Icon size={16} strokeWidth={1.8} className="shrink-0" />
-                <span className="truncate">{it.title}</span>
-              </Link>
-              {chats && (
-                <button
-                  type="button"
-                  className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:text-red md:hidden md:group-hover:flex"
-                  onClick={async () => {
-                    if (!window.confirm('이 대화를 지울까요?')) return;
-                    await api(`/api/chats/${it.id}`, undefined, { method: 'DELETE' });
-                    if (path === to) navigate('/aichat');
-                    else load();
-                  }}
-                  aria-label="대화 삭제"
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
-          );
-        })}
+  const here = path + search;
+  const row = (it: SideRow) => {
+    const Icon = SIDE_ICON[it.icon];
+    return (
+      <div key={it.id} className={`group flex items-center rounded-lg ${here === it.to ? 'bg-soft-2 text-ink' : 'text-sub hover:bg-soft-2/70 hover:text-ink'}`}>
+        <Link to={it.to} className="flex h-9 min-w-0 flex-1 items-center gap-2.5 px-2.5 text-[14px]">
+          <Icon size={16} strokeWidth={1.8} className="shrink-0" />
+          <span className="truncate">{it.title}</span>
+        </Link>
+        {chats && (
+          <button
+            type="button"
+            className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted hover:text-red md:hidden md:group-hover:flex"
+            onClick={async () => {
+              if (!window.confirm('이 대화를 지울까요?')) return;
+              await api(`/api/chats/${it.id}`, undefined, { method: 'DELETE' });
+              if (path === it.to) navigate('/aichat');
+              else load();
+            }}
+            aria-label="대화 삭제"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
       </div>
+    );
+  };
+  return (
+    <div className="mt-5 min-h-0 flex-1 overflow-y-auto px-1.5 pb-2">
+      {!chats && favorites.length > 0 && (
+        <div className="mb-4">
+          <div className="px-2.5 pb-1.5 text-[13px] text-muted">즐겨찾기</div>
+          {favorites.map(row)}
+        </div>
+      )}
+      <div className="px-2.5 pb-1.5 text-[13px] text-muted">{chats ? '채팅 기록' : '문서'}</div>
+      {items?.length === 0 && <p className="px-3 py-6 text-center text-[14px] text-muted">{chats ? '아직 나눈 대화가 없어요' : '폴더나 문서가 아직 없어요'}</p>}
+      {items?.map(row)}
     </div>
   );
 }
 
 function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onToggle: () => void; onNavigate?: () => void }) {
   const { me, openLogin } = useApp();
-  const { path } = useLocation();
+  const { path, search } = useLocation();
   const toggleTheme = useToggleTheme();
   const [feedback, setFeedback] = useState(false);
   const [download, setDownload] = useState(false);
@@ -232,9 +258,9 @@ function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onTo
           <SideItem key={n.to} to={n.to} label={n.label} Icon={n.icon} active={n.match(path)} badge={n.badge} collapsed={collapsed} />
         ))}
       </nav>
-      {collapsed ? <div className="flex-1" /> : <SideList path={path} />}
+      {collapsed ? <div className="flex-1" /> : <SideList path={path} search={search} />}
       <div className={`space-y-0.5 border-t border-line py-2 ${collapsed ? 'px-0' : 'px-1.5'} w-full ${collapsed ? 'flex flex-col items-center' : ''}`}>
-        <SideItem to="/settings" label="설정" Icon={Settings} active={path.startsWith('/settings')} collapsed={collapsed} />
+        <SideItem to="/trash" label="휴지통" Icon={Trash2} active={path === '/trash'} collapsed={collapsed} />
         <SideItem label="피드백 남기기" Icon={Send} onClick={() => setFeedback(true)} collapsed={collapsed} />
         <SideItem label="테마 변경" Icon={ThemeIcon as any} onClick={toggleTheme} collapsed={collapsed} />
         <SideItem label="앱 다운로드" Icon={Smartphone} onClick={() => setDownload(true)} collapsed={collapsed} />
@@ -243,7 +269,7 @@ function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onTo
       {!collapsed && guest && (
         <div className="border-t border-line px-5 pb-4 pt-5">
           <div className="text-[15px] font-medium">내 공부 자료를 한곳에</div>
-          <p className="mt-1.5 text-[14px] leading-[1.45] text-muted">로그인하면 요약·퀴즈가 저장돼서 폰이든 PC든 이어서 볼 수 있어요</p>
+          <p className="mt-1.5 text-[14px] leading-[1.45] text-muted">로그인해 두면 만든 자료가 계정에 남아서, 어느 기기에서든 이어서 볼 수 있어요</p>
           <Button variant="outline" className="mt-4 w-full" onClick={() => openLogin()}>
             로그인
           </Button>

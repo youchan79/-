@@ -59,6 +59,11 @@ function General() {
           🇰🇷 한국어
         </button>
       </Row>
+      <Row label="휴지통" sub="지운 문서는 7일 동안 보관돼요">
+        <Button size="sm" variant="ghost" onClick={() => navigate('/trash')}>
+          보기
+        </Button>
+      </Row>
     </>
   );
 }

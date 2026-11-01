@@ -29,7 +29,7 @@ export function createExam(p: {
   const ids = [...new Set(p.docIds)].slice(0, 10);
   if (!ids.length) throw new DocError('시험 범위 자료를 하나 이상 골라 주세요.');
   if (p.mode === 'variant' && ids.length !== 1) throw new DocError('족보 변형은 시험지 자료 하나만 골라 주세요.');
-  const docs = ids.map((id) => one('SELECT id, title, status, source_text, user_id FROM documents WHERE id = ?', id));
+  const docs = ids.map((id) => one('SELECT id, title, status, source_text, user_id FROM documents WHERE id = ? AND deleted_at IS NULL', id));
   for (const d of docs) {
     if (!d || (d.user_id && d.user_id !== p.userId)) throw new DocError('자료를 찾을 수 없어요.');
     if (d.status !== 'ready') throw new DocError(`"${d.title}" 자료를 아직 정리하고 있어요.`);
