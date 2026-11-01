@@ -201,7 +201,7 @@ function QuizPlayer({ set, onHome, onRef }: { set: StudySet<{ questions: QuizQ[]
   return (
     <div className="pb-16">
       <div className="flex items-center gap-4 pb-6">
-        <button type="button" onClick={onHome} className="inline-flex shrink-0 items-center gap-1.5 text-[14px] text-sub hover:text-ink">
+        <button type="button" onClick={onHome} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-soft px-3.5 text-[14px] text-sub hover:text-ink">
           <ArrowLeft size={15} /> 퀴즈 홈으로
         </button>
         <SegmentBar total={order.length} current={pos} done={(i) => p.answers[order[i]] !== undefined} />
@@ -261,12 +261,12 @@ function QuizPlayer({ set, onHome, onRef }: { set: StudySet<{ questions: QuizQ[]
         })}
       </div>
 
-      <div className="mt-10 flex items-center justify-between border-t border-line pt-5">
+      <div className="mt-10 flex items-center gap-3 border-t border-line pt-5">
         <button
           type="button"
           disabled={pos === 0}
           onClick={() => setP((prev) => ({ ...prev, index: Math.max(0, pos - 1) }))}
-          className="inline-flex items-center gap-1.5 px-3 py-2 text-[15px] text-sub disabled:opacity-30"
+          className="inline-flex h-12 flex-1 items-center justify-center gap-1.5 rounded-full bg-soft text-[15px] font-medium text-sub transition hover:bg-soft-2 disabled:opacity-40"
         >
           <ArrowLeft size={16} /> 이전
         </button>
@@ -282,7 +282,7 @@ function QuizPlayer({ set, onHome, onRef }: { set: StudySet<{ questions: QuizQ[]
               setP((prev) => ({ ...prev, index: order.length }));
             } else setP((prev) => ({ ...prev, index: pos + 1 }));
           }}
-          className="inline-flex items-center gap-1.5 px-3 py-2 text-[15px] font-medium"
+          className="inline-flex h-12 flex-1 items-center justify-center gap-1.5 rounded-full bg-soft text-[15px] font-medium transition hover:bg-soft-2"
         >
           {pos + 1 >= order.length ? '결과 보기' : '다음'} <ArrowRight size={16} />
         </button>
@@ -402,7 +402,7 @@ function CardPlayer({ set, onHome, onRef }: { set: StudySet<{ cards: Card[] }>; 
   return (
     <div className="pb-16">
       <div className="flex items-center gap-4 pb-6">
-        <button type="button" onClick={onHome} className="inline-flex shrink-0 items-center gap-1.5 text-[14px] text-sub hover:text-ink">
+        <button type="button" onClick={onHome} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-soft px-3.5 text-[14px] text-sub hover:text-ink">
           <ArrowLeft size={15} /> 플래시카드 홈으로
         </button>
         <SegmentBar total={order.length} current={done ? -1 : pos} done={(i) => i < pos} />
@@ -455,11 +455,11 @@ function CardPlayer({ set, onHome, onRef }: { set: StudySet<{ cards: Card[] }>; 
               <ArrowRight size={18} />
             </button>
           </div>
-          <div className="mx-auto mt-8 flex max-w-[400px] items-center justify-between px-2 text-[15px]">
-            <button type="button" onClick={() => mark(false)} className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sub hover:bg-soft">
+          <div className="mx-auto mt-8 flex max-w-[420px] items-center gap-3 text-[15px]">
+            <button type="button" onClick={() => mark(false)} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-soft text-sub transition hover:bg-soft-2">
               <X size={17} /> 모르겠어요 <span className="tabular-nums text-muted">{unknownCount}</span>
             </button>
-            <button type="button" onClick={() => mark(true)} className="inline-flex items-center gap-2 rounded-full px-3 py-2 hover:bg-soft">
+            <button type="button" onClick={() => mark(true)} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-soft font-medium transition hover:bg-soft-2">
               <span className="tabular-nums text-muted">{knownCount}</span> 알고있어요 <Check size={17} />
             </button>
           </div>
