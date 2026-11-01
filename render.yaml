@@ -22,6 +22,11 @@ services:
         value: 스터디AI
       - key: CLAUDE_MODEL
         value: claude-haiku-5-5
+      # 요금 (예전 PLAN_LIFETIME_PRICE가 남아 있어도 읽지 않는다)
+      - key: PLAN_MONTHLY_PRICE
+        value: "9900"
+      - key: PLAN_YEARLY_PRICE
+        value: "82800"
       - key: SESSION_SECRET
         generateValue: true
       - key: ADMIN_KEY
