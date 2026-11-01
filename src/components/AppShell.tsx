@@ -242,8 +242,8 @@ function Sidebar({ collapsed, onToggle, onNavigate }: { collapsed: boolean; onTo
       </div>
       {!collapsed && guest && (
         <div className="border-t border-line px-5 pb-4 pt-5">
-          <div className="text-[15px] font-medium">나만의 학습 공간을 만드세요</div>
-          <p className="mt-1.5 text-[14px] leading-[1.45] text-muted">로그인하면 만든 자료가 저장되고, 어디서나 이어서 공부할 수 있어요</p>
+          <div className="text-[15px] font-medium">내 공부 자료를 한곳에</div>
+          <p className="mt-1.5 text-[14px] leading-[1.45] text-muted">로그인하면 요약·퀴즈가 저장돼서 폰이든 PC든 이어서 볼 수 있어요</p>
           <Button variant="outline" className="mt-4 w-full" onClick={() => openLogin()}>
             로그인
           </Button>

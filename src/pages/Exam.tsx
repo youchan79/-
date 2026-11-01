@@ -19,7 +19,7 @@ function PaperIllustration() {
         <div className="flex items-center justify-between border-b border-line pb-3 text-[12px] text-sub">
           모의고사 <span className="rounded-full bg-soft px-2 py-0.5 tabular-nums">40:00</span>
         </div>
-        <div className="mt-4 text-[12px] text-muted">Ⅰ. week3_lecture.pdf</div>
+        <div className="mt-4 text-[12px] text-muted">Ⅰ. 3주차_강의자료.pdf</div>
         {[1, 2].map((n) => (
           <div key={n} className="mt-4">
             <div className="flex items-center gap-2 text-[13px] font-semibold">
@@ -138,9 +138,9 @@ export function ExamHome() {
   }, [me?.user]);
 
   const features = [
-    { icon: Copy, title: '여러 자료를 한 시험지로', sub: '강의자료·녹음·메모·영상을 최대 10개까지 담아 시험 범위를 한 번에 점검해요.' },
-    { icon: Sparkles, title: '이미 푼 퀴즈와 겹치지 않게', sub: '이미 풀어 본 퀴즈와 겹치지 않는, 처음 보는 문제로 출제해요.' },
-    { icon: Clock, title: '시간 재고 풀고, 바로 채점', sub: '답안지로 남은 문제를 확인하고, 틀린 문제만 다시 풀 수 있어요.' },
+    { icon: Copy, title: '자료 여러 개를 한 번에', sub: '강의자료·녹음·메모·영상을 10개까지 묶어 시험 범위 전체를 훑어요.' },
+    { icon: Sparkles, title: '풀어 본 문제는 빼고', sub: '퀴즈 탭에서 이미 푼 문제와 다른, 새 문제로만 내요.' },
+    { icon: Clock, title: '시간 맞춰 풀고 곧바로 채점', sub: '답안지에서 안 푼 문제를 확인하고, 틀린 것만 골라 다시 풀어요.' },
   ];
 
   return (
@@ -149,14 +149,14 @@ export function ExamHome() {
         <div>
           <NewBadge />
           <h1 className="mt-4 text-[30px] font-medium leading-[1.3] tracking-[-0.03em]">
-            내 수업 자료로 실전
+            시험 범위 자료로
             <br />
-            시험지를 만들어 보세요
+            진짜 같은 모의고사를
           </h1>
           <p className="mt-3 text-[15px] leading-[1.65] text-sub">
-            시험 범위 자료를 고르면 실제 시험처럼 시간을 재고 풀어 볼 수 있어요.
+            시험에 나올 자료를 고르면 제한 시간 안에 푸는 시험지가 만들어져요.
             <br />
-            채점 후에는 자료별로 어디가 약한지 알려 드려요.
+            채점이 끝나면 어느 자료에서 많이 틀렸는지 짚어 드려요.
           </p>
           <div className="mt-8 space-y-5">
             {features.map((f) => (
@@ -172,7 +172,7 @@ export function ExamHome() {
             ))}
           </div>
           <div className="mt-9 flex flex-wrap gap-2">
-            <Button onClick={() => requireLogin(() => setBuilder('mock'))}>{me?.user ? '시험지 만들기' : '로그인하고 시작하기'}</Button>
+            <Button onClick={() => requireLogin(() => setBuilder('mock'))}>{me?.user ? '시험지 만들기' : '로그인하고 만들기'}</Button>
             <Button variant="outline" onClick={() => requireLogin(() => setBuilder('variant'))}>
               <ScrollText size={16} /> 족보 변형 문제
             </Button>

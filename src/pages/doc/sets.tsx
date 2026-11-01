@@ -191,7 +191,7 @@ function QuizPlayer({ set, onHome, onRef }: { set: StudySet<{ questions: QuizQ[]
             처음부터 다시
           </Button>
           <Button variant="ghost" onClick={onHome}>
-            퀴즈 홈으로
+            퀴즈 목록
           </Button>
         </div>
       </div>
@@ -202,7 +202,7 @@ function QuizPlayer({ set, onHome, onRef }: { set: StudySet<{ questions: QuizQ[]
     <div className="pb-16">
       <div className="flex items-center gap-4 pb-6">
         <button type="button" onClick={onHome} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-soft px-3.5 text-[14px] text-sub hover:text-ink">
-          <ArrowLeft size={15} /> 퀴즈 홈으로
+          <ArrowLeft size={15} /> 퀴즈 목록
         </button>
         <SegmentBar total={order.length} current={pos} done={(i) => p.answers[order[i]] !== undefined} />
         <span className="shrink-0 text-[13px] tabular-nums text-muted">
@@ -403,7 +403,7 @@ function CardPlayer({ set, onHome, onRef }: { set: StudySet<{ cards: Card[] }>; 
     <div className="pb-16">
       <div className="flex items-center gap-4 pb-6">
         <button type="button" onClick={onHome} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-soft px-3.5 text-[14px] text-sub hover:text-ink">
-          <ArrowLeft size={15} /> 플래시카드 홈으로
+          <ArrowLeft size={15} /> 카드 목록
         </button>
         <SegmentBar total={order.length} current={done ? -1 : pos} done={(i) => i < pos} />
       </div>
@@ -413,16 +413,16 @@ function CardPlayer({ set, onHome, onRef }: { set: StudySet<{ cards: Card[] }>; 
           <div className="text-[14px] text-muted">한 바퀴 끝</div>
           <div className="mt-3 flex gap-8 text-[15px]">
             <span>
-              알고있어요 <b className="text-[22px]">{knownCount}</b>
+              외웠어요 <b className="text-[22px]">{knownCount}</b>
             </span>
             <span>
-              모르겠어요 <b className="text-[22px]">{unknownCount}</b>
+              헷갈려요 <b className="text-[22px]">{unknownCount}</b>
             </span>
           </div>
           <div className="mt-6 flex flex-wrap justify-center gap-2">
             {unknownCount > 0 && (
               <Button onClick={() => setP((prev) => ({ ...prev, only: order.filter((i) => prev.unknown.includes(i)), index: 0 }))}>
-                <RotateCcw size={15} /> 모르는 카드만 다시
+                <RotateCcw size={15} /> 헷갈린 카드만 다시
               </Button>
             )}
             <Button variant="outline" onClick={() => setP({ known: [], unknown: [], index: 0, only: null })}>
@@ -440,7 +440,7 @@ function CardPlayer({ set, onHome, onRef }: { set: StudySet<{ cards: Card[] }>; 
               <div className={`flip-inner relative h-full w-full ${flipped ? 'flipped' : ''}`}>
                 <div className="flip-face absolute inset-0 flex flex-col rounded-[28px] bg-soft p-8 text-left">
                   <div className="flex flex-1 items-center text-[22px] font-medium leading-[1.55]">{cards[ci].front}</div>
-                  <div className="text-center text-[14px] text-muted">탭하여 정답보기</div>
+                  <div className="text-center text-[14px] text-muted">눌러서 답 확인</div>
                 </div>
                 <div className="flip-face flip-back absolute inset-0 flex flex-col rounded-[28px] border border-line bg-canvas p-8 text-left">
                   <div className="text-[13px] text-muted">정답</div>
@@ -457,10 +457,10 @@ function CardPlayer({ set, onHome, onRef }: { set: StudySet<{ cards: Card[] }>; 
           </div>
           <div className="mx-auto mt-8 flex max-w-[420px] items-center gap-3 text-[15px]">
             <button type="button" onClick={() => mark(false)} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-soft text-sub transition hover:bg-soft-2">
-              <X size={17} /> 모르겠어요 <span className="tabular-nums text-muted">{unknownCount}</span>
+              <X size={17} /> 헷갈려요 <span className="tabular-nums text-muted">{unknownCount}</span>
             </button>
             <button type="button" onClick={() => mark(true)} className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-soft font-medium transition hover:bg-soft-2">
-              <span className="tabular-nums text-muted">{knownCount}</span> 알고있어요 <Check size={17} />
+              <span className="tabular-nums text-muted">{knownCount}</span> 외웠어요 <Check size={17} />
             </button>
           </div>
         </>

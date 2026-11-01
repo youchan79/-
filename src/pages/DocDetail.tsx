@@ -48,7 +48,7 @@ function TutorTab({ doc, onRef }: { doc: Doc; onRef: (r: string) => void }) {
       compact
       onRef={onRef}
       emptyTitle="이 자료에 대해 물어보세요"
-      suggestions={['핵심만 3줄로 정리해줘', '시험에 나올 만한 부분 알려줘', '어려운 개념 쉽게 설명해줘']}
+      suggestions={['세 줄로 핵심만 뽑아줘', '시험에 나올 것 같은 곳 짚어줘', '헷갈리는 개념 쉽게 풀어줘']}
       ensureChat={async () => {
         if (!me?.user) {
           openLogin({ mode: 'signup' });
@@ -173,7 +173,9 @@ export default function DocDetail({ id, search }: { id: string; search: string }
 
   const ready = doc.status === 'ready';
   const sourceReady = ready || doc.kind === 'pdf';
-  const tabs: ReadonlyArray<readonly [Tab, string]> = desktop ? TABS : [['source', SOURCE_LABEL[doc.kind]], ...TABS];
+  // 메모 문서는 본문이 곧 메모라서 메모 탭을 따로 두지 않는다(원조와 같음)
+  const docTabs = doc.kind === 'memo' ? TABS.filter(([t]) => t !== 'memo') : TABS;
+  const tabs: ReadonlyArray<readonly [Tab, string]> = desktop ? docTabs : [['source', SOURCE_LABEL[doc.kind]], ...docTabs];
 
   return (
     <AppShell bare forceCollapsed mobileMenu={false}>

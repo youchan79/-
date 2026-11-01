@@ -37,7 +37,7 @@ function ProCard() {
     <div className="mb-3 flex items-center justify-between gap-4 rounded-2xl border border-line p-4">
       <div>
         <div className="text-[16px]">{config?.serviceName} Pro</div>
-        <div className="mt-1 text-[13px] text-sub">더 많은 자료를 올리고, 학습을 이어가세요.</div>
+        <div className="mt-1 text-[13px] text-sub">올리는 개수 걱정 없이 계속 공부하세요.</div>
       </div>
       <Button size="sm" onClick={() => navigate('/subscription')}>
         업그레이드
