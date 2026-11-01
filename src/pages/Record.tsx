@@ -12,7 +12,8 @@ type State = 'idle' | 'recording' | 'paused';
 const SpeechRecognitionCtor: any = typeof window !== 'undefined' ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition : null;
 
 export default function Record() {
-  const { showToast } = useApp();
+  const { showToast, config } = useApp();
+  const audioFileOk = !!config?.media.audioFile || config?.aiMode === 'mock';
   const { progress, run } = useUploader();
   const [state, setState] = useState<State>('idle');
   const [title, setTitle] = useState('');
@@ -142,6 +143,10 @@ export default function Record() {
   const finish = async () => {
     const mr = rec.current;
     if (!mr) return;
+    if (!audioFileOk && !transcriptRef.current.length) {
+      showToast('아직 받아 적은 자막이 없어요. 조금 더 녹음한 뒤 종료해 주세요.');
+      return;
+    }
     setState('idle');
     stateRef.current = 'idle';
     try {
@@ -191,8 +196,10 @@ export default function Record() {
             {finalText.length === 0 && !interim ? (
               <p className="text-muted">
                 {SpeechRecognitionCtor
-                  ? '녹음을 시작하면 실시간 자막이 여기에 쌓여요.'
-                  : '이 브라우저는 실시간 자막을 지원하지 않아요. 녹음이 끝나면 AI가 받아 적어요. (Chrome 권장)'}
+                  ? '녹음을 시작하면 실시간 자막이 여기에 쌓여요. 이 자막으로 요약과 퀴즈를 만들어요.'
+                  : audioFileOk
+                    ? '이 브라우저는 실시간 자막을 지원하지 않아요. 녹음이 끝나면 AI가 받아 적어요. (Chrome 권장)'
+                    : '이 브라우저는 실시간 자막을 지원하지 않아요. Chrome이나 삼성 인터넷에서 녹음해 주세요.'}
               </p>
             ) : (
               <>
@@ -230,12 +237,14 @@ export default function Record() {
           </div>
         </div>
 
+        {audioFileOk && (
         <div className="mt-6 flex items-center justify-center gap-2 text-[14px] text-muted">
           이미 녹음한 파일이 있나요?
           <button type="button" className="inline-flex items-center gap-1 font-medium text-ink underline-offset-2 hover:underline" onClick={() => fileInput.current?.click()}>
             <Upload size={14} /> 녹음 파일 올리기
           </button>
         </div>
+        )}
         <p className="mt-2 text-center text-[13px] text-muted">강의 녹음은 무료 플랜에서도 횟수 제한 없이 쓸 수 있어요.</p>
         <input
           ref={fileInput}

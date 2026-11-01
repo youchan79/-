@@ -1,18 +1,20 @@
 import crypto from 'node:crypto';
 import { config } from './config.ts';
-import { all, one, run, tx, nowIso, addMonths, newId } from './db.ts';
+import { all, one, run, tx, nowIso, newId } from './db.ts';
 import { getSub, isPro } from './plan.ts';
 import type { User } from './auth.ts';
 
 /*
- * 페이앱 연동
- * - 월간: 정기결제(rebillRegist). 페이앱이 매달 결제하고 결제통보(feedbackurl)로 알려 준다.
- * - 연간: 단건 결제요청(payrequest).
- * - 결제 완료는 결제통보에서만 처리한다. 결제창에서 돌아온 것(returnurl)은 완료 근거가 아니다.
+ * 페이앱 연동 (개인판매자, 단건 결제)
+ * - 상품은 평생 이용권 하나: 결제요청(payrequest) 한 번으로 평생 Pro.
+ * - 결제 완료는 결제통보(feedbackurl)에서만 처리한다. 결제창에서 돌아온 것(returnurl)은 완료 근거가 아니다.
  */
 
 const API = 'https://api.payapp.kr/oapi/v2';
-export type Plan = 'monthly' | 'yearly';
+export type Plan = 'lifetime';
+
+/** 평생 이용권의 만료일. 서비스가 운영되는 동안 Pro가 유지된다. */
+export const LIFETIME_END = '9999-12-31T00:00:00.000Z';
 
 export class PaymentError extends Error {}
 
@@ -62,6 +64,7 @@ export const planInfo = (plan: Plan) => config.plans[plan];
 
 export async function startCheckout(p: { user: User; plan: Plan; phone: string; origin: string }) {
   if (config.paymentProvider === 'none') throw new PaymentError('결제 설정이 아직 완료되지 않았어요.');
+  if (isPro(p.user.id)) throw new PaymentError('이미 평생 이용권을 갖고 있어요.');
   const { name, price } = planInfo(p.plan);
   const orderId = newId('ord');
   run(
@@ -82,24 +85,19 @@ export async function startCheckout(p: { user: User; plan: Plan; phone: string; 
   }
 
   const feedbackurl = `${config.appUrl || p.origin}/api/payapp/feedback`;
-  const common = { recvphone: p.phone, feedbackurl, var1: orderId, var2: p.user.id, smsuse: 'n', returnurl, recvemail: p.user.email };
-  if (p.plan === 'monthly') {
-    const kstDay = new Date(Date.now() + 9 * 3600_000).getUTCDate();
-    const expire = new Date(Date.now() + 5 * 365 * 86400_000).toISOString().slice(0, 10);
-    const out = await payappPost({
-      cmd: 'rebillRegist',
-      goodname: name,
-      goodprice: String(price),
-      rebillCycleType: 'Month',
-      rebillCycleMonth: String(kstDay > 28 ? 90 : kstDay), // 29~31일 가입은 매월 말일 결제
-      rebillExpire: expire,
-      openpaytype: 'card',
-      ...common,
-    });
-    run('UPDATE payments SET rebill_no = ? WHERE order_id = ?', out.rebill_no, orderId);
-    return { orderId, payurl: out.payurl };
-  }
-  const out = await payappPost({ cmd: 'payrequest', goodname: name, price: String(price), checkretry: 'y', ...common });
+  const out = await payappPost({
+    cmd: 'payrequest',
+    goodname: name,
+    price: String(price),
+    recvphone: p.phone,
+    recvemail: p.user.email,
+    feedbackurl,
+    returnurl,
+    var1: orderId,
+    var2: p.user.id,
+    smsuse: 'n',
+    checkretry: 'y',
+  });
   run('UPDATE payments SET mul_no = ? WHERE order_id = ?', out.mul_no, orderId);
   return { orderId, payurl: out.payurl };
 }
@@ -164,7 +162,7 @@ export function handleFeedback(body: Record<string, string>): FeedbackResult {
           nowIso(),
         );
       }
-      extendSubscription(base.user_id, base.plan, price, body.rebill_no || base.rebill_no || null);
+      activateLifetime(base.user_id, price);
     });
     return { ok: true, purchase: { orderId: payOrderId, userId: base.user_id, amount: price, first } };
   }
@@ -189,58 +187,39 @@ export function handleFeedback(body: Record<string, string>): FeedbackResult {
   return { ok: true };
 }
 
-function extendSubscription(userId: string, plan: Plan, amount: number, rebillNo: string | null) {
+function activateLifetime(userId: string, amount: number) {
   const now = nowIso();
-  const s = getSub(userId);
-  const months = plan === 'yearly' ? 12 : 1;
-  const base = s && s.status !== 'expired' && s.current_period_end > now ? s.current_period_end : now;
-  const end = addMonths(base, months);
-  if (s) {
+  if (getSub(userId)) {
     run(
-      `UPDATE subscriptions SET plan = ?, status = 'active', rebill_no = ?, amount = ?, current_period_end = ?,
+      `UPDATE subscriptions SET plan = 'lifetime', status = 'active', rebill_no = NULL, amount = ?, current_period_end = ?,
          cancel_at_period_end = 0, updated_at = ? WHERE user_id = ?`,
-      plan,
-      plan === 'monthly' ? rebillNo : null,
       amount,
-      end,
+      LIFETIME_END,
       now,
       userId,
     );
   } else {
     run(
       `INSERT INTO subscriptions (user_id, plan, status, rebill_no, amount, current_period_end, created_at, updated_at)
-       VALUES (?, ?, 'active', ?, ?, ?, ?, ?)`,
+       VALUES (?, 'lifetime', 'active', NULL, ?, ?, ?, ?)`,
       userId,
-      plan,
-      plan === 'monthly' ? rebillNo : null,
       amount,
-      end,
+      LIFETIME_END,
       now,
       now,
     );
   }
 }
 
-/* ---------- 해지 ---------- */
-
-export async function cancelSubscription(userId: string) {
-  const s = getSub(userId);
-  if (!s || !isPro(userId)) throw new PaymentError('이용 중인 구독이 없어요.');
-  if (s.plan === 'monthly' && s.rebill_no && config.paymentProvider === 'payapp') {
-    await payappPost({ cmd: 'rebillCancel', rebill_no: s.rebill_no });
-  }
-  run("UPDATE subscriptions SET status = 'canceled', cancel_at_period_end = 1, updated_at = ? WHERE user_id = ?", nowIso(), userId);
-}
-
 export function subscriptionView(userId: string) {
   const s = getSub(userId);
+  const paid = one("SELECT paid_at FROM payments WHERE user_id = ? AND status = 'paid' ORDER BY paid_at DESC LIMIT 1", userId);
   return {
     pro: isPro(userId),
     plan: s?.plan ?? null,
     status: s?.status ?? null,
     amount: s?.amount ?? null,
-    periodEnd: s?.current_period_end ?? null,
-    canceled: !!s?.cancel_at_period_end,
+    purchasedAt: paid?.paid_at ?? null,
   };
 }
 
@@ -252,7 +231,7 @@ export function orderStatus(userId: string, orderId: string) {
 /* ---------- 개발용 가짜 결제 ---------- */
 
 /** 가짜 결제창에서 '결제하기'를 누르면 실제 결제통보와 같은 형식으로 서명해 처리한다. */
-export function mockPay(orderId: string, opts: { renewal?: boolean } = {}): FeedbackResult {
+export function mockPay(orderId: string): FeedbackResult {
   if (config.paymentProvider !== 'mock') throw new PaymentError('가짜 결제는 개발 환경에서만 쓸 수 있어요.');
   const p = one('SELECT * FROM payments WHERE order_id = ?', orderId);
   if (!p) throw new PaymentError('주문을 찾을 수 없어요.');
@@ -269,10 +248,8 @@ export function mockPay(orderId: string, opts: { renewal?: boolean } = {}): Feed
     var1: orderId,
     var2: p.user_id,
     mul_no: mulNo,
-    rebill_no: p.plan === 'monthly' ? p.rebill_no || `mock_rebill_${orderId}` : '',
     pay_type: '1',
     goodname: planInfo(p.plan).name,
-    ...(opts.renewal ? {} : {}),
   });
 }
 

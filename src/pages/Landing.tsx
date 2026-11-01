@@ -1,11 +1,38 @@
 import React, { useEffect, useState } from 'react';
-import { Brain, Check, FileUp, Image as ImageIcon, Layers, ListChecks, MessageCircle, Mic, NotebookPen, Sparkles, Youtube, BookOpen } from 'lucide-react';
+import {
+  BookOpen,
+  Brain,
+  Briefcase,
+  Building2,
+  Check,
+  Clapperboard,
+  ClipboardList,
+  Cog,
+  Cpu,
+  Dna,
+  FileUp,
+  FlaskConical,
+  GraduationCap,
+  HeartPulse,
+  Image as ImageIcon,
+  Languages,
+  Layers,
+  ListChecks,
+  MessageCircle,
+  Mic,
+  NotebookPen,
+  Scale,
+  ScrollText,
+  Sparkles,
+  Stethoscope,
+  TrendingUp,
+  Youtube,
+} from 'lucide-react';
 import { useApp } from '../lib/app.tsx';
 import { Link, navigate } from '../lib/router.tsx';
 import { Button, Logo } from '../components/ui.tsx';
 import { LanguageSelect, useToggleTheme } from '../components/AppShell.tsx';
 import { BizInfo } from './Subscription.tsx';
-import { api } from '../lib/api.ts';
 import { REVIEWS, SCHOOL_LOGOS } from '../content/landing.ts';
 import { Moon } from 'lucide-react';
 
@@ -327,138 +354,138 @@ function Showcase() {
   );
 }
 
-/* ---------- 실제 이용 수치, 대학 로고, 리뷰 ---------- */
+/* ---------- 히어로 아래 문구, 전공 배지 줄, 활용 예시 ---------- */
 
-interface PublicStats {
-  users: number;
-  generated: number;
-  asOf: string;
-}
-
-/** 62만, 1억 2,000만 처럼 한국식 단위로 */
-function koCount(n: number) {
-  if (n >= 100_000_000) {
-    const eok = Math.floor(n / 100_000_000);
-    const man = Math.floor((n % 100_000_000) / 10_000);
-    return man ? `${eok}억 ${man.toLocaleString('ko-KR')}만` : `${eok}억`;
-  }
-  if (n >= 10_000) return `${Math.floor(n / 10_000).toLocaleString('ko-KR')}만`;
-  return n.toLocaleString('ko-KR');
-}
-
-function usePublicStats() {
-  const [stats, setStats] = useState<PublicStats | null>(null);
-  useEffect(() => {
-    api<PublicStats>('/api/stats/public').then(setStats).catch(() => {});
-  }, []);
-  return stats;
-}
-
-const asOfLabel = (iso: string) => {
-  const d = new Date(new Date(iso).getTime() + 9 * 3600_000);
-  return `${d.getUTCFullYear()}년 ${d.getUTCMonth() + 1}월 기준`;
-};
-
-/** 히어로 아래: 실제 가입자 수와 생성 건수 (DB에서 센 값) */
-function StatsLine({ stats }: { stats: PublicStats | null }) {
-  if (!stats) return <div className="mt-6 h-8" />;
+/** 레퍼런스의 가입자 수 자리: 근거 있는 상품 사실만 쓴다 */
+function HeroNote() {
+  const { config } = useApp();
+  const price = config ? config.plans.lifetime.price.toLocaleString('ko-KR') : '9,900';
   return (
-    <div className="mt-6 flex items-center justify-center gap-3 text-[14px] text-muted">
-      <span className="flex -space-x-2">
-        {['#cfd6ff', '#ffd9c7', '#cdeedd'].map((c) => (
-          <span key={c} className="h-8 w-8 rounded-full border-2 border-canvas" style={{ background: c }} />
-        ))}
+    <div className="mt-6 flex items-center justify-center gap-2 text-[14px] text-muted">
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-soft text-blue">
+        <Sparkles size={13} />
       </span>
       <span>
-        {asOfLabel(stats.asOf)}, 누적 가입 <b className="font-semibold text-ink">{koCount(stats.users)}명</b> · <b className="font-semibold text-ink">{koCount(stats.generated)}건</b> 생성
+        <b className="font-semibold text-ink">{price}원 한 번 결제로 평생 무제한</b> · 강의 녹음은 무료로 계속
       </span>
     </div>
   );
 }
 
-/** 이용 대학 로고 줄. SCHOOL_LOGOS가 비어 있으면 같은 모양의 빈 원을 보여 준다. */
-function SchoolStrip({ stats }: { stats: PublicStats | null }) {
-  const items = SCHOOL_LOGOS.length ? SCHOOL_LOGOS : Array.from({ length: 11 }, (_, i) => ({ name: '', src: '', key: i }));
-  const row = [...items, ...items];
+const MAJORS: Array<{ name: string; icon: React.ComponentType<{ size?: number; strokeWidth?: number }> }> = [
+  { name: '경영학', icon: Briefcase },
+  { name: '간호학', icon: HeartPulse },
+  { name: '컴퓨터공학', icon: Cpu },
+  { name: '법학', icon: Scale },
+  { name: '의예과', icon: Stethoscope },
+  { name: '심리학', icon: Brain },
+  { name: '경제학', icon: TrendingUp },
+  { name: '기계공학', icon: Cog },
+  { name: '생명과학', icon: Dna },
+  { name: '교육학', icon: GraduationCap },
+  { name: '미디어', icon: Clapperboard },
+  { name: '건축학', icon: Building2 },
+  { name: '화학', icon: FlaskConical },
+  { name: '영어영문', icon: Languages },
+];
+
+/** 레퍼런스의 대학 로고 줄 자리. 실제 이용 학교 로고가 생기면 SCHOOL_LOGOS로 바뀐다. */
+function SchoolStrip() {
+  if (SCHOOL_LOGOS.length) {
+    const row = [...SCHOOL_LOGOS, ...SCHOOL_LOGOS];
+    return (
+      <section className="pt-24 md:pt-28">
+        <div className="relative overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_92%,transparent)]">
+          <div className="animate-marquee flex w-max gap-16">
+            {row.map((s, i) => (
+              <img key={i} src={s.src} alt={s.name} className="h-16 w-16 shrink-0 object-contain" />
+            ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+  const row = [...MAJORS, ...MAJORS];
   return (
     <section className="pt-24 md:pt-28">
-      <p className="text-center text-[15px] text-muted">{stats ? `${asOfLabel(stats.asOf)} 누적 가입 ${koCount(stats.users)}명 돌파` : '\u00a0'}</p>
+      <p className="text-center text-[15px] text-muted">전공 상관없이, 강의 자료만 있으면 돼요</p>
       <div className="relative mt-8 overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_92%,transparent)]">
-        <div className="animate-marquee flex w-max gap-16">
-          {row.map((s, i) =>
-            s.src ? (
-              <img key={i} src={s.src} alt={s.name} className="h-16 w-16 shrink-0 object-contain" />
-            ) : (
-              <span key={i} className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-dashed border-line text-[10px] text-muted">
-                대학 로고
+        <div className="animate-marquee flex w-max gap-10">
+          {row.map((m, i) => (
+            <div key={i} className="flex w-[72px] shrink-0 flex-col items-center gap-2">
+              <span className="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-soft text-sub">
+                <m.icon size={24} strokeWidth={1.6} />
               </span>
-            ),
-          )}
+              <span className="text-[12px] text-muted">{m.name}</span>
+            </div>
+          ))}
         </div>
       </div>
-      {!SCHOOL_LOGOS.length && import.meta.env.DEV && (
-        <p className="mt-4 text-center text-[12px] text-muted">개발 메모: 실제 이용 대학과 사용 가능한 로고 이미지를 src/content/landing.ts에 넣으면 이 자리에 표시돼요</p>
-      )}
     </section>
   );
 }
 
-function ReviewCard({ r }: { r?: { title: string; body: string; source: string } }) {
+const USES: Array<{ icon: React.ComponentType<{ size?: number }>; title: string; body: string }> = [
+  { icon: ImageIcon, title: '악필 필기도 문제로', body: '손으로 쓴 필기 사진을 올리면 핵심을 읽어서 바로 퀴즈로 만들어요.' },
+  { icon: Mic, title: '녹음 끝나면 바로 퀴즈', body: '녹음을 멈추면 요약과 퀴즈가 준비돼요. 잊어버리기 전에 5분만 풀어 보세요.' },
+  { icon: ClipboardList, title: '시험 2주 전 모의고사', body: '범위 자료를 모아 실제 시험처럼 시간을 재고 풀고, 약한 자료부터 다시 봐요.' },
+  { icon: ScrollText, title: '족보로 변형 문제', body: '기출 시험지를 올리면 같은 개념을 묻는 새 문제로 바꿔 드려요.' },
+  { icon: MessageCircle, title: '새벽 3시에도 질문', body: '자료를 읽은 AI 튜터가 몇 페이지에 나오는지까지 짚어서 답해요.' },
+  { icon: Languages, title: '영어 원서 PDF도', body: '영어 자료도 한국어로 정리하고, 전공 용어는 원어를 함께 보여 줘요.' },
+  { icon: BookOpen, title: '헷갈리는 개념만 모아서', body: '정의와 예시, 자주 혼동되는 점까지 정리된 개념 사전으로 복습해요.' },
+  { icon: ListChecks, title: '외울 것만 체크리스트로', body: '수치, 연도, 학자 이름처럼 외워야 할 것만 뽑아 하나씩 지워 나가요.' },
+];
+
+function UseCard({ u }: { u: (typeof USES)[number] }) {
   return (
     <div className="w-[300px] shrink-0 rounded-[22px] bg-soft p-6 text-left">
-      <div className={`text-[14px] tracking-[2px] ${r ? 'text-[#f5a524]' : 'text-line'}`}>★★★★★</div>
-      {r ? (
-        <>
-          <div className="mt-3 text-[16px] font-semibold">{r.title}</div>
-          <p className="mt-2 line-clamp-4 text-[14px] leading-[1.65] text-sub">{r.body}</p>
-          <div className="mt-4 text-[12px] text-muted">{r.source}</div>
-        </>
-      ) : (
-        <div className="mt-4 space-y-2.5" aria-hidden>
-          <div className="h-3.5 w-2/5 rounded bg-soft-2" />
-          <div className="h-3 w-full rounded bg-soft-2" />
-          <div className="h-3 w-11/12 rounded bg-soft-2" />
-          <div className="h-3 w-3/5 rounded bg-soft-2" />
-          <div className="!mt-5 h-2.5 w-1/4 rounded bg-soft-2" />
-        </div>
-      )}
+      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-canvas text-ink">
+        <u.icon size={17} />
+      </span>
+      <div className="mt-4 text-[16px] font-semibold">{u.title}</div>
+      <p className="mt-2 text-[14px] leading-[1.65] text-sub">{u.body}</p>
     </div>
   );
 }
 
-/** 사용자 리뷰 두 줄 흐름. REVIEWS가 비어 있으면 빈 카드 틀만 보여 준다. */
+function ReviewCard({ r }: { r: { title: string; body: string; source: string } }) {
+  return (
+    <div className="w-[300px] shrink-0 rounded-[22px] bg-soft p-6 text-left">
+      <div className="text-[14px] tracking-[2px] text-[#f5a524]">★★★★★</div>
+      <div className="mt-3 text-[16px] font-semibold">{r.title}</div>
+      <p className="mt-2 line-clamp-4 text-[14px] leading-[1.65] text-sub">{r.body}</p>
+      <div className="mt-4 text-[12px] text-muted">{r.source}</div>
+    </div>
+  );
+}
+
+/** 레퍼런스의 리뷰 섹션 자리. 실제 리뷰(REVIEWS)가 생기기 전에는 활용 예시를 같은 모양으로 보여 준다. */
 function Reviews() {
-  const list = REVIEWS.length ? REVIEWS : Array.from({ length: 6 }, () => undefined);
-  const half = Math.ceil(list.length / 2);
-  const rows = [list.slice(0, half), list.slice(half).length ? list.slice(half) : list.slice(0, half)];
+  const real = REVIEWS.length > 0;
+  const items: React.ReactNode[] = real ? REVIEWS.map((r, i) => <ReviewCard key={i} r={r} />) : USES.map((u, i) => <UseCard key={i} u={u} />);
+  const half = Math.ceil(items.length / 2);
+  const rows = [items.slice(0, half), items.slice(half).length ? items.slice(half) : items.slice(0, half)];
   return (
     <section className="pt-32 md:pt-40">
       <div className="px-5 text-center">
-        <h2 className="text-[30px] font-medium tracking-[-0.03em] md:text-[36px]">사용자 리뷰</h2>
-        <p className="mt-3 text-[16px] text-muted">스터디AI 사용자가 남긴 리뷰를 소개합니다.</p>
-        {!REVIEWS.length && import.meta.env.DEV && (
-          <p className="mt-2 text-[12px] text-muted">개발 메모: 실제 사용자 리뷰가 모이면 src/content/landing.ts에 넣으면 이 카드에 채워져요</p>
-        )}
+        <h2 className="text-[30px] font-medium tracking-[-0.03em] md:text-[36px]">{real ? '사용자 리뷰' : '이렇게 공부해요'}</h2>
+        <p className="mt-3 text-[16px] text-muted">{real ? '스터디AI 사용자가 남긴 리뷰를 소개합니다.' : '스터디AI로 할 수 있는 일을 모았어요.'}</p>
       </div>
       <div className="mt-12 space-y-4 overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_6%,#000_94%,transparent)]">
-        {rows.map((row, ri) => {
-          const loop = [...row, ...row, ...row, ...row];
-          return (
-            <div key={ri} className="animate-marquee flex w-max gap-4" style={{ animationDirection: ri ? 'reverse' : 'normal', animationDuration: ri ? '75s' : '60s' }}>
-              {loop.map((r, i) => (
-                <ReviewCard key={i} r={r} />
-              ))}
-            </div>
-          );
-        })}
+        {rows.map((row, ri) => (
+          <div key={ri} className="animate-marquee flex w-max gap-4" style={{ animationDirection: ri ? 'reverse' : 'normal', animationDuration: ri ? '75s' : '60s' }}>
+            {[...row, ...row, ...row].map((node, i) => (
+              <React.Fragment key={i}>{node}</React.Fragment>
+            ))}
+          </div>
+        ))}
       </div>
     </section>
   );
 }
 
 export default function Landing() {
-  const { me } = useApp();
-  const stats = usePublicStats();
+  const { me, config } = useApp();
   useEffect(() => {
     if (me?.user) navigate('/home', { replace: true });
   }, [me?.user]);
@@ -482,13 +509,13 @@ export default function Landing() {
             지금 시작하기
           </Button>
         </div>
-        <StatsLine stats={stats} />
+        <HeroNote />
         <div className="mx-auto mt-12 max-w-[980px]">
           <MiniApp tab="퀴즈" />
         </div>
       </section>
 
-      <SchoolStrip stats={stats} />
+      <SchoolStrip />
 
       <section id="features" className="mx-auto grid max-w-[1180px] items-center gap-10 px-5 pt-32 md:grid-cols-2 md:gap-16 md:pt-40">
         <div>
@@ -532,7 +559,9 @@ export default function Landing() {
       <section className="mx-auto max-w-[1180px] px-5 pt-32 md:pt-40">
         <div className="gradient-panel rounded-[28px] px-6 py-16 text-center text-[#111] md:py-20">
           <h2 className="text-[30px] font-medium tracking-[-0.03em] md:text-[36px]">오늘 수업부터 바로 써 보세요</h2>
-          <p className="mx-auto mt-3 max-w-[520px] text-[15px] text-[#2a2f4a]">PDF와 영상을 요약하고 퀴즈·플래시카드로 복습하세요. 웹에서 바로, 휴대폰에서도 이어서 공부할 수 있어요.</p>
+          <p className="mx-auto mt-3 max-w-[520px] text-[15px] text-[#2a2f4a]">
+            PDF와 영상을 요약하고 퀴즈·플래시카드로 복습하세요. 딱 한 번 {config ? config.plans.lifetime.price.toLocaleString('ko-KR') : '9,900'}원이면 평생 무제한, 매달 나가는 구독료가 없어요.
+          </p>
           <Button size="lg" className="mt-8 !bg-[#111] !text-white" onClick={() => navigate('/home')}>
             지금 시작하기
           </Button>

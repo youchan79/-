@@ -17,11 +17,10 @@ const FEATURES = [
 ];
 
 const FAQ: Array<[string, string]> = [
-  ['기본 플랜과 Pro 플랜의 차이점은 무엇인가요?', '기본 플랜은 매주 파일 2회, 유튜브 2회까지 분석할 수 있고 강의 녹음은 제한이 없어요. Pro는 업로드와 학습 자료 생성, AI 튜터 질문이 모두 무제한이고 1GB까지의 긴 녹음 파일도 올릴 수 있어요.'],
-  ['구독 취소는 어떻게 하나요?', '설정 > 구독 또는 이 페이지에서 언제든 해지할 수 있어요. 해지해도 이미 결제한 기간이 끝날 때까지 Pro를 쓸 수 있고, 다음 달부터 결제되지 않아요.'],
-  ['결제 후 환불도 가능한가요?', '결제 후 7일 이내이고 Pro 기능을 쓰지 않았다면 전액 환불해 드려요. 자세한 기준은 환불 정책을 확인해 주세요.'],
-  ['결제 카드를 바꾸고 싶어요', '지금 구독을 해지한 뒤, 이용 기간이 끝나면 새 카드로 다시 구독해 주세요. 바로 바꿔야 하면 고객센터로 알려 주세요.'],
-  ['Pro를 결제했는데 적용이 안 돼요', '결제 확인까지 1분 정도 걸릴 수 있어요. 새로고침해도 그대로라면 결제한 이메일과 함께 고객센터로 알려 주세요.'],
+  ['정말 한 번만 결제하면 되나요?', '네. Pro 평생 이용권은 9,900원을 한 번 결제하면 끝이에요. 매달 빠져나가는 자동 결제가 없고, 서비스가 운영되는 동안 계속 Pro로 쓸 수 있어요.'],
+  ['기본 플랜과 Pro는 무엇이 다른가요?', '기본 플랜은 매주 파일 2회, 유튜브 2회까지 분석할 수 있고 강의 녹음은 제한이 없어요. Pro는 업로드와 학습 자료 생성, AI 튜터 질문이 모두 무제한이고 1GB까지의 긴 녹음 파일도 올릴 수 있어요.'],
+  ['결제 후 환불도 가능한가요?', '결제 후 7일 이내이고 Pro 기능을 쓰지 않았다면 전액 환불해 드려요. 회사 잘못으로 서비스를 전혀 쓰지 못한 경우에도 전액 환불해요. 자세한 기준은 환불 정책을 확인해 주세요.'],
+  ['Pro를 결제했는데 적용이 안 돼요', '결제 확인까지 1분 정도 걸릴 수 있어요. 새로고침해도 그대로라면 결제한 이메일과 주문번호를 함께 고객센터로 알려 주세요.'],
   ['결제는 어떻게 처리되나요?', '결제는 결제대행사 페이앱을 통해 안전하게 처리돼요. 스터디AI는 카드 번호를 저장하지 않아요.'],
   ['모바일 앱도 있나요?', '스토어 앱은 준비 중이에요. 휴대폰 브라우저에서 홈 화면에 추가하면 앱처럼 쓸 수 있어요.'],
   ['고객 센터가 있나요?', '사이드바의 피드백 남기기나 아래 이메일로 문의해 주세요. 영업일 기준 하루 안에 답해 드려요.'],
@@ -87,26 +86,23 @@ function useOrderReturn(orderId: string | null) {
 }
 
 export default function Subscription({ search }: { search: string }) {
-  const { config, me, openLogin, refreshMe, showToast } = useApp();
+  const { config, me, openLogin } = useApp();
   const onError = useApiErrorHandler();
-  const [period, setPeriod] = useState<'monthly' | 'yearly'>('monthly');
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [faq, setFaq] = useState<number | null>(null);
   const orderState = useOrderReturn(new URLSearchParams(search).get('order'));
 
   if (!config) return null;
-  const monthly = config.plans.monthly.price;
-  const yearly = config.plans.yearly.price;
-  const saving = monthly * 12 - yearly;
+  const plan = config.plans.lifetime;
   const sub = me?.sub;
   const usage = me?.usage;
 
   const checkout = async (phone: string) => {
     setBusy(true);
     try {
-      const r = await api<{ payurl: string; orderId: string; amount: number }>('/api/checkout', { plan: period, phone });
-      track('InitiateCheckout', { value: r.amount, currency: 'KRW', content_name: config.plans[period].name });
+      const r = await api<{ payurl: string; orderId: string; amount: number }>('/api/checkout', { plan: 'lifetime', phone });
+      track('InitiateCheckout', { value: r.amount, currency: 'KRW', content_name: plan.name });
       location.href = r.payurl;
     } catch (e) {
       onError(e);
@@ -119,17 +115,6 @@ export default function Subscription({ search }: { search: string }) {
     setPhoneOpen(true);
   };
 
-  const cancel = async () => {
-    if (!window.confirm(`해지하면 ${sub?.periodEnd ? formatDate(sub.periodEnd) : '이용 기간 끝'} 이후로 결제되지 않아요. 해지할까요?`)) return;
-    try {
-      await api('/api/subscription/cancel', {});
-      await refreshMe();
-      showToast('해지했어요. 남은 기간 동안은 Pro를 계속 쓸 수 있어요.');
-    } catch (e) {
-      onError(e);
-    }
-  };
-
   return (
     <div className="min-h-dvh bg-canvas">
       <div className="mx-auto max-w-[1120px] px-4 pb-16 pt-6 md:px-6">
@@ -137,8 +122,8 @@ export default function Subscription({ search }: { search: string }) {
           <ChevronLeft size={16} /> 돌아가기
         </button>
 
-        <h1 className="mt-10 text-center text-[26px] font-medium tracking-[-0.03em] md:text-[32px]">정리는 AI에게 맡기고, 공부는 A+에 집중하세요</h1>
-        <p className="mt-2 text-center text-[16px] text-muted">필요한 만큼 쓰고, 언제든 해지할 수 있어요</p>
+        <h1 className="mt-10 text-center text-[26px] font-medium tracking-[-0.03em] md:text-[32px]">딱 한 번 결제로, 졸업할 때까지 평생 무제한</h1>
+        <p className="mt-2 text-center text-[16px] text-muted">매달 빠져나가는 구독료 없이 {won(plan.price)} 한 번이면 끝이에요</p>
 
         {orderState === 'checking' && (
           <div className="mx-auto mt-6 flex max-w-[560px] items-center justify-center gap-2 rounded-2xl bg-soft p-4 text-[15px]">
@@ -154,23 +139,13 @@ export default function Subscription({ search }: { search: string }) {
             <div className="gradient-pro px-6 py-7 text-[#111] md:px-8">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <div className="text-[20px]">Pro 플랜</div>
+                  <div className="text-[20px]">Pro 평생 이용권</div>
                   <div className="mt-3 flex items-baseline gap-1.5">
-                    <span className="text-[44px] font-medium tracking-[-0.03em]">{won(period === 'monthly' ? monthly : Math.round(yearly / 12 / 10) * 10)}</span>
-                    <span className="text-[14px]">/월</span>
+                    <span className="text-[44px] font-medium tracking-[-0.03em]">{won(plan.price)}</span>
+                    <span className="text-[14px]">/ 평생</span>
                   </div>
-                  {period === 'yearly' && <div className="text-[13px] text-[#333]">연 {won(yearly)} 한 번 결제</div>}
                 </div>
-                {!sub?.pro && (
-                  <div className="flex items-center rounded-full bg-white p-1 shadow-sm">
-                    <button type="button" onClick={() => setPeriod('monthly')} className={`h-9 rounded-full px-4 text-[14px] ${period === 'monthly' ? 'bg-[#111] text-white' : 'text-[#333]'}`}>
-                      월간
-                    </button>
-                    <button type="button" onClick={() => setPeriod('yearly')} className={`flex h-9 items-center gap-1.5 rounded-full px-3 text-[14px] ${period === 'yearly' ? 'bg-[#111] text-white' : 'text-[#333]'}`}>
-                      연간 <span className="rounded-full bg-[#e3f7ea] px-2 py-0.5 text-[12px] font-medium text-[#13803f]">{won(saving)} 절약</span>
-                    </button>
-                  </div>
-                )}
+                <span className="rounded-full bg-white px-4 py-2 text-[14px] font-medium shadow-sm">한 번 결제 · 자동 결제 없음</span>
               </div>
             </div>
             <div className="px-6 py-6 md:px-8">
@@ -183,24 +158,15 @@ export default function Subscription({ search }: { search: string }) {
               </ul>
               {sub?.pro ? (
                 <div className="mt-8 rounded-2xl bg-soft p-5">
-                  <div className="text-[15px] font-semibold">
-                    {sub.plan === 'yearly' ? '연간' : '월간'} Pro 이용 중 {sub.canceled && <span className="font-normal text-muted">(해지 예약됨)</span>}
-                  </div>
-                  <div className="mt-1 text-[14px] text-sub">
-                    {sub.canceled || sub.plan === 'yearly' ? `${formatDate(sub.periodEnd!)}까지 이용할 수 있어요.` : `다음 결제일은 ${formatDate(sub.periodEnd!)}이에요. (${won(sub.amount ?? monthly)})`}
-                  </div>
-                  {sub.plan === 'monthly' && !sub.canceled && (
-                    <Button variant="outline" size="sm" className="mt-4" onClick={() => void cancel()}>
-                      구독 해지
-                    </Button>
-                  )}
+                  <div className="text-[15px] font-semibold">평생 Pro 이용 중</div>
+                  <div className="mt-1 text-[14px] text-sub">{sub.purchasedAt ? `${formatDate(sub.purchasedAt)}에 결제했어요. ` : ''}추가 결제 없이 계속 쓰면 돼요.</div>
                 </div>
               ) : (
                 <>
                   <Button size="lg" className="mt-8 w-full" disabled={busy || config.paymentProvider === 'none'} onClick={start}>
-                    {busy ? <Spinner className="h-4 w-4" /> : '무제한으로 시작하기'}
+                    {busy ? <Spinner className="h-4 w-4" /> : `${won(plan.price)} 한 번으로 평생 시작하기`}
                   </Button>
-                  <p className="mt-2.5 text-center text-[13px] text-muted">{period === 'monthly' ? '언제든 해지할 수 있어요' : '1년 동안 추가 결제 없이 이용해요'}</p>
+                  <p className="mt-2.5 text-center text-[13px] text-muted">딱 한 번만 결제하면 이후로는 평생 추가 요금이 없어요</p>
                   {config.paymentProvider === 'mock' && <p className="mt-1 text-center text-[12px] text-blue">개발 모드: 가짜 결제창으로 연결돼요</p>}
                 </>
               )}
@@ -209,7 +175,7 @@ export default function Subscription({ search }: { search: string }) {
 
           <div className="rounded-[24px] border border-line p-6">
             <div className="text-[18px]">기본 플랜</div>
-            {usage && (
+            {usage && !sub?.pro && (
               <>
                 <div className="mt-4 inline-flex rounded-full border border-line px-3 py-1 text-[12px]">
                   이번 주 남은 횟수: PDF {Math.max(0, config.free.weeklyFiles - usage.files)} · 유튜브 {Math.max(0, config.free.weeklyYoutube - usage.youtube)}
@@ -283,7 +249,7 @@ export function BizInfo() {
       <p>
         {b.name} | 대표: {b.owner}
       </p>
-      {b.regNo && <p>사업자등록번호: {b.regNo}</p>}
+      {b.regNo ? <p>사업자등록번호: {b.regNo}</p> : null}
       {b.mailOrderNo && <p>통신판매: {b.mailOrderNo}</p>}
       <p>주소: {b.address}</p>
       <p>전화번호: {b.phone}</p>
@@ -324,7 +290,7 @@ export function MockPayApp({ search }: { search: string }) {
             </div>
             <div className="flex justify-between">
               <span className="text-[#666]">결제 방식</span>
-              {order.plan === 'monthly' ? '정기결제 (매월)' : '일반결제'}
+              일반결제 (한 번)
             </div>
             <div className="flex justify-between">
               <span className="text-[#666]">휴대폰</span>

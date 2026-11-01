@@ -130,8 +130,8 @@ function Subscription() {
   return (
     <>
       <ProCard />
-      <Row label="현재 플랜" sub={sub?.pro ? (sub.canceled ? `해지 예약됨 · ${formatDate(sub.periodEnd!)}까지 이용` : sub.plan === 'yearly' ? `${formatDate(sub.periodEnd!)}까지` : `다음 결제일 ${formatDate(sub.periodEnd!)}`) : undefined}>
-        <span className="text-[14px] font-medium">{sub?.pro ? `Pro ${sub.plan === 'yearly' ? '연간' : '월간'}` : '기본 플랜'}</span>
+      <Row label="현재 플랜" sub={sub?.pro ? `${sub.purchasedAt ? formatDate(sub.purchasedAt) + ' 결제 · ' : ''}추가 결제 없음` : undefined}>
+        <span className="text-[14px] font-medium">{sub?.pro ? 'Pro 평생 이용권' : '기본 플랜'}</span>
       </Row>
       {sub?.pro && (
         <Row label="결제 금액">
@@ -147,7 +147,7 @@ function Subscription() {
       )}
       <div className="pt-5">
         <Button variant="outline" onClick={() => navigate('/subscription')}>
-          구독 관리
+          이용권 보기
         </Button>
       </div>
     </>

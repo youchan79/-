@@ -2,8 +2,30 @@ import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { useApp } from '../lib/app.tsx';
 
+/** 스터디AI 마크: 둥근 사각형 안의 S와 반짝임 */
+export function LogoMark({ size = 24, className = '' }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden>
+      <rect x="1" y="1" width="22" height="22" rx="6.5" fill="var(--c-solid)" />
+      <path
+        d="M15.2 8.6c-.8-.8-1.9-1.2-3.1-1.2-1.8 0-3 .9-3 2.2 0 1.4 1.2 1.9 3 2.4 1.9.5 3.2 1.1 3.2 2.6 0 1.4-1.3 2.4-3.2 2.4-1.4 0-2.7-.5-3.6-1.4"
+        fill="none"
+        stroke="var(--c-on-solid)"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+      />
+      <path d="M18 3.9l.55 1.35 1.35.55-1.35.55L18 7.7l-.55-1.35-1.35-.55 1.35-.55z" fill="var(--c-on-solid)" />
+    </svg>
+  );
+}
+
 export function Logo({ className = '' }: { className?: string }) {
-  return <span className={`select-none text-[24px] font-bold tracking-[-0.06em] ${className}`}>StudyAI</span>;
+  return (
+    <span className={`inline-flex select-none items-center gap-1.5 text-[22px] font-bold tracking-[-0.05em] ${className}`}>
+      <LogoMark size={26} />
+      StudyAI
+    </span>
+  );
 }
 
 type Variant = 'solid' | 'outline' | 'soft' | 'ghost';

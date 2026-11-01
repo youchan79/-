@@ -20,7 +20,26 @@ export const SYSTEM = `너는 대학 강의 자료로 시험 대비 학습 자�
 
 const str = { type: 'string' };
 
-export const schemas = {
+/**
+ * Claude 구조화 출력 규칙에 맞춘다: 모든 object에 additionalProperties: false,
+ * 배열 길이 제약(minItems/maxItems)은 지원하지 않으므로 빼고 프롬프트로 지시한다.
+ */
+function strict<T>(schema: T): T {
+  const walk = (node: any): any => {
+    if (Array.isArray(node)) return node.map(walk);
+    if (!node || typeof node !== 'object') return node;
+    const out: any = {};
+    for (const [k, v] of Object.entries(node)) {
+      if (k === 'minItems' || k === 'maxItems') continue;
+      out[k] = walk(v);
+    }
+    if (out.type === 'object') out.additionalProperties = false;
+    return out;
+  };
+  return walk(schema);
+}
+
+const rawSchemas = {
   summary: {
     type: 'object',
     properties: {
@@ -52,7 +71,7 @@ export const schemas = {
           properties: {
             question: str,
             hint: str,
-            options: { type: 'array', items: str, minItems: 4, maxItems: 4 },
+            options: { type: 'array', items: str, description: '보기 정확히 4개' },
             answer: { type: 'integer', description: '정답 보기 번호 0~3' },
             explanation: str,
             ref: str,
@@ -163,8 +182,8 @@ export const schemas = {
           properties: {
             source: { type: 'integer', description: '출제한 자료 번호 (1부터)' },
             question: str,
-            options: { type: 'array', items: str, minItems: 4, maxItems: 4 },
-            answer: { type: 'integer' },
+            options: { type: 'array', items: str, description: '보기 정확히 4개' },
+            answer: { type: 'integer', description: '정답 보기 번호 0~3' },
             explanation: str,
             ref: str,
           },
@@ -176,17 +195,20 @@ export const schemas = {
   },
 };
 
-export function materialPrompt(kind: MaterialKind, source: string) {
+export const schemas = strict(rawSchemas);
+
+/** 원문은 system에 캐시해서 따로 보내므로, 여기서는 할 일만 쓴다. */
+export function materialPrompt(kind: MaterialKind, style = '') {
   const task = {
     summary: `자료 전체를 요약한다. 자료의 흐름대로 4~8개 섹션으로 나누고, 섹션마다 핵심 설명(body)과 쉬운 설명(easy)을 쓴다. 비교가 필요한 내용은 마크다운 표로 정리한다.`,
     mindmap: `자료의 개념 구조를 마인드맵으로 만든다. 중심 주제 1개, 1단계 가지 3~6개, 각 가지 아래 2~5개, 필요하면 3단계까지. 라벨은 15자 이내 명사구.`,
     memorize: `시험 직전에 외워야 할 항목을 15~25개 뽑아 주제별 그룹으로 묶는다. 정의, 공식, 수치, 연도, 학자 이름, 비교 포인트처럼 외워야 하는 것 위주로.`,
     concepts: `자료의 핵심 개념을 6~12개 뽑아 개념 사전을 만든다. 개념마다 정의, 핵심 포인트 2~4개, 예시, 자주 혼동되는 점을 쓴다.`,
   }[kind];
-  return `${task}\n\n[자료]\n${clipSource(source)}`;
+  return `위 [자료]로 다음을 만든다.\n${task}${style}`;
 }
 
-export function setPrompt(kind: SetKind, source: string, opts: { count: number; focus?: string; avoid?: string[]; difficulty?: string }) {
+export function setPrompt(kind: SetKind, opts: { count: number; focus?: string; avoid?: string[]; difficulty?: string; style?: string }) {
   const focus = opts.focus ? `\n- 이번에는 "${opts.focus}" 개념에 집중해서 만든다.` : '';
   const avoid = opts.avoid?.length ? `\n- 아래 이미 낸 문제와 겹치지 않게 만든다:\n${opts.avoid.map((q) => `  · ${q}`).join('\n')}` : '';
   const diff = opts.difficulty ? `\n- 난이도: ${opts.difficulty}` : '';
@@ -194,7 +216,7 @@ export function setPrompt(kind: SetKind, source: string, opts: { count: number; 
     kind === 'quiz'
       ? `객관식 4지선다 퀴즈 ${opts.count}문제를 만든다. 단순 암기보다 개념을 적용하는 문제를 섞는다. 오답 보기도 그럴듯하게 만든다. 정답 위치는 고르게 섞는다. hint는 정답을 직접 말하지 않는 한 문장, explanation은 왜 정답이고 다른 보기는 왜 틀렸는지.`
       : `플래시카드 ${opts.count}장을 만든다. 앞면은 질문 또는 용어, 뒷면은 2문장 이내의 답.`;
-  return `${task}${focus}${diff}${avoid}\n\n[자료]\n${clipSource(source)}`;
+  return `위 [자료]로 다음을 만든다.\n${task}${focus}${diff}${avoid}${opts.style ?? ''}`;
 }
 
 export function examPrompt(sources: Array<{ title: string; text: string }>, count: number, avoid: string[]) {
@@ -209,6 +231,7 @@ ${avoid.slice(0, 60).map((q) => `  · ${q}`).join('\n') || '  (없음)'}
 ${body}`;
 }
 
+/** pdf, image는 Claude가, audio, youtube는 (설정된 경우) Gemini가 쓴다. */
 export const EXTRACT_PROMPTS = {
   pdf: `이 문서의 내용을 페이지 순서대로 빠짐없이 옮겨 적어라.
 - 각 페이지 시작에 [p.페이지번호] 를 한 줄로 쓴다.

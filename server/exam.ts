@@ -43,10 +43,10 @@ export function createExam(p: { userId: string; docIds: string[]; count: number;
         userId: p.userId,
         kind: 'exam',
         system: SYSTEM,
-        prompt: p.mode === 'variant' ? VARIANT_PROMPT(sources[0].text, p.count) : examPrompt(sources, p.count, avoid),
+        source: null,
+        task: p.mode === 'variant' ? VARIANT_PROMPT(sources[0].text, p.count) : examPrompt(sources, p.count, avoid),
         schema: schemas.exam,
         maxTokens: 20_000,
-        temperature: 0.7,
         mock: () => mockExam(sources, p.count),
       });
       json.sources = sources.map((s) => s.title);

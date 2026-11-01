@@ -33,9 +33,9 @@ export const config = {
   adminKey: str('ADMIN_KEY', isProd ? '' : 'dev-admin'),
   serviceName: str('SERVICE_NAME', '스터디AI'),
 
+  // 단건 결제 하나: 한 번 결제하면 평생 Pro
   plans: {
-    monthly: { name: str('PLAN_MONTHLY_NAME', '스터디AI Pro 월간'), price: num('PLAN_MONTHLY_PRICE', 9900) },
-    yearly: { name: str('PLAN_YEARLY_NAME', '스터디AI Pro 연간'), price: num('PLAN_YEARLY_PRICE', 82800) },
+    lifetime: { name: str('PLAN_LIFETIME_NAME', '스터디AI Pro 평생 이용권'), price: num('PLAN_LIFETIME_PRICE', 9900) },
   },
 
   free: {
@@ -47,6 +47,8 @@ export const config = {
   },
   pro: {
     maxFileMb: num('PRO_MAX_FILE_MB', 1024),
+    // 평생 이용권의 공정 사용 상한 (한 달 업로드 수). 0이면 제한 없음.
+    monthlyUploads: num('PRO_MONTHLY_UPLOADS', 0),
   },
 
   payapp,
@@ -57,13 +59,25 @@ export const config = {
       ? 'none'
       : 'mock') as 'payapp' | 'mock' | 'none',
 
+  // 학습 자료 생성, PDF·사진 읽기, 튜터는 모두 Claude
+  claude: {
+    apiKey: str('ANTHROPIC_API_KEY'),
+    model: str('CLAUDE_MODEL', 'claude-haiku-5-5'),
+    // 단가 (USD / 100만 토큰). Claude Haiku 5.5: 프롬프트 10만 토큰 이하 0.10/0.50, 초과 0.50/2.50
+    priceInput: num('AI_PRICE_INPUT_PER_M_USD', 0.1),
+    priceOutput: num('AI_PRICE_OUTPUT_PER_M_USD', 0.5),
+    priceInputLong: num('AI_PRICE_INPUT_LONG_PER_M_USD', 0.5),
+    priceOutputLong: num('AI_PRICE_OUTPUT_LONG_PER_M_USD', 2.5),
+    longPromptTokens: num('AI_LONG_PROMPT_TOKENS', 100_000),
+    usdKrw: num('USD_KRW', 1400),
+  },
+
+  // 선택: 녹음 파일과 유튜브 영상을 직접 받아 적을 때만 쓴다 (Claude는 소리와 영상을 읽지 못함)
   gemini: {
     apiKey: str('GEMINI_API_KEY'),
     model: str('GEMINI_MODEL', 'gemini-2.5-flash'),
-    thinkingBudget: str('GEMINI_THINKING_BUDGET', '0'),
-    priceInputPerMUsd: num('AI_PRICE_INPUT_PER_M_USD', 0.3),
-    priceOutputPerMUsd: num('AI_PRICE_OUTPUT_PER_M_USD', 2.5),
-    usdKrw: num('USD_KRW', 1400),
+    priceInput: num('GEMINI_PRICE_INPUT_PER_M_USD', 0.3),
+    priceOutput: num('GEMINI_PRICE_OUTPUT_PER_M_USD', 2.5),
   },
 
   meta: {
@@ -92,7 +106,8 @@ export function assertProdConfig() {
   if (!config.sessionSecret) missing.push('SESSION_SECRET');
   if (!config.adminKey) missing.push('ADMIN_KEY');
   if (!config.appUrl) missing.push('APP_URL');
-  if (!config.gemini.apiKey) missing.push('GEMINI_API_KEY');
-  if (config.paymentProvider !== 'payapp') missing.push('PAYAPP_USERID/LINKKEY/LINKVAL/REQUESTKEY');
+  if (!config.claude.apiKey) missing.push('ANTHROPIC_API_KEY');
   if (missing.length) throw new Error(`운영 환경 필수 설정이 비어 있습니다: ${missing.join(', ')}`);
+  // 페이앱 키는 나중에 넣어도 된다. 그 전까지 결제 버튼만 막힌다.
+  if (config.paymentProvider !== 'payapp') console.warn('[config] 페이앱 키가 없어 결제가 꺼져 있어요 (PAYAPP_USERID/LINKKEY/LINKVAL/REQUESTKEY)');
 }

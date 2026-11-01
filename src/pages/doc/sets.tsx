@@ -301,7 +301,8 @@ export function QuizTab({ doc, onRef, focusRequest }: { doc: DocDetail; onRef: (
 
   // 처음 열면 첫 퀴즈를 바로 만든다. 샘플은 이미 들어 있다.
   useEffect(() => {
-    if (!sets || autoCreated.current || doc.readOnly || !me?.user) return;
+    // 개념 탭에서 넘어온 요청이 있으면 그쪽에서 만든다
+    if (!sets || autoCreated.current || doc.readOnly || !me?.user || focusRequest) return;
     if (sets.length === 0) {
       autoCreated.current = true;
       void create('quiz', { count: 5 }).then((id) => id && load().then(() => setOpenId(id)));
@@ -313,8 +314,11 @@ export function QuizTab({ doc, onRef, focusRequest }: { doc: DocDetail; onRef: (
     if (sets?.length === 1 && doc.readOnly && !openId) setOpenId(sets[0].id);
   }, [sets, doc.readOnly, openId]);
 
+  // 개발 모드(StrictMode)에서 effect가 두 번 돌아도 한 번만 만든다
+  const handledFocus = useRef<string | null>(null);
   useEffect(() => {
-    if (!focusRequest) return;
+    if (!focusRequest || handledFocus.current === focusRequest) return;
+    handledFocus.current = focusRequest;
     void create('quiz', { count: 5, focus: focusRequest }).then((id) => id && load().then(() => setOpenId(id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRequest]);
@@ -474,7 +478,8 @@ export function FlashcardsTab({ doc, onRef, focusRequest }: { doc: DocDetail; on
   const { me } = useApp();
 
   useEffect(() => {
-    if (!sets) return;
+    // 개념 탭에서 넘어온 요청이 있으면 그쪽에서 만든다
+    if (!sets || focusRequest) return;
     if (sets.length === 0 && !autoCreated.current && !doc.readOnly && me?.user) {
       autoCreated.current = true;
       void create('flashcards', { count: 10 }).then((id) => id && load().then(() => setOpenId(id)));
@@ -485,8 +490,10 @@ export function FlashcardsTab({ doc, onRef, focusRequest }: { doc: DocDetail; on
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sets]);
 
+  const handledFocus = useRef<string | null>(null);
   useEffect(() => {
-    if (!focusRequest) return;
+    if (!focusRequest || handledFocus.current === focusRequest) return;
+    handledFocus.current = focusRequest;
     void create('flashcards', { count: 10, focus: focusRequest }).then((id) => id && load().then(() => setOpenId(id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusRequest]);

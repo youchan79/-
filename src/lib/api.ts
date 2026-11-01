@@ -4,20 +4,20 @@ export type MaterialKind = 'summary' | 'mindmap' | 'memorize' | 'concepts';
 export interface AppConfig {
   serviceName: string;
   pixelId: string | null;
-  plans: { monthly: { name: string; price: number }; yearly: { name: string; price: number } };
+  plans: { lifetime: { name: string; price: number } };
+  media: { audioFile: boolean; youtubeAuto: boolean };
   free: { weeklyFiles: number; weeklyYoutube: number; dailyTutor: number; weeklyExams: number; maxFileMb: number };
   paymentProvider: 'payapp' | 'mock' | 'none';
-  aiMode: 'gemini' | 'mock';
+  aiMode: 'claude' | 'mock';
   business: Record<string, string>;
 }
 
 export interface SubView {
   pro: boolean;
-  plan: 'monthly' | 'yearly' | null;
+  plan: 'lifetime' | null;
   status: string | null;
   amount: number | null;
-  periodEnd: string | null;
-  canceled: boolean;
+  purchasedAt: string | null;
 }
 
 export interface Usage {

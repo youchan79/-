@@ -2,15 +2,13 @@ import { config } from './config.ts';
 import { one, nowIso, addDays, kstDayStartIso } from './db.ts';
 
 export interface Sub {
-  plan: 'monthly' | 'yearly';
+  plan: 'lifetime';
   status: 'active' | 'canceled' | 'expired';
   rebill_no: string | null;
   amount: number;
   current_period_end: string;
   cancel_at_period_end: number;
 }
-
-const GRACE_DAYS = 2; // 월 정기결제가 하루 이틀 늦게 통보돼도 끊기지 않게
 
 export function getSub(userId: string): Sub | undefined {
   return one<Sub>('SELECT * FROM subscriptions WHERE user_id = ?', userId);
@@ -19,9 +17,7 @@ export function getSub(userId: string): Sub | undefined {
 export function isPro(userId: string | undefined | null): boolean {
   if (!userId) return false;
   const s = getSub(userId);
-  if (!s || s.status === 'expired') return false;
-  const end = s.status === 'active' && s.plan === 'monthly' ? addDays(s.current_period_end, GRACE_DAYS) : s.current_period_end;
-  return end > nowIso();
+  return !!s && s.status === 'active' && s.current_period_end > nowIso();
 }
 
 /** 무료 플랜의 주간 기준: 가입 시각부터 7일 단위로 돈다. */
@@ -58,7 +54,19 @@ export class LimitError extends Error {
 }
 
 export function assertCanUpload(userId: string, createdAt: string, kind: string) {
-  if (isPro(userId)) return;
+  if (isPro(userId)) {
+    // 평생 이용권 공정 사용 상한 (PRO_MONTHLY_UPLOADS, 0이면 제한 없음)
+    const cap = config.pro.monthlyUploads;
+    if (cap > 0) {
+      const used = one<{ c: number }>(
+        "SELECT COUNT(*) AS c FROM documents WHERE user_id = ? AND status != 'error' AND created_at >= ?",
+        userId,
+        addDays(nowIso(), -30),
+      )!.c;
+      if (used >= cap) throw new LimitError(`한 달에 자료 ${cap}개까지 올릴 수 있어요. 공정 사용 기준이에요.`, 'fair_use');
+    }
+    return;
+  }
   const u = usage(userId, createdAt);
   if (['pdf', 'docx', 'pptx', 'image'].includes(kind) && u.files >= config.free.weeklyFiles) {
     throw new LimitError(`이번 주 무료 업로드(${config.free.weeklyFiles}회)를 모두 사용했어요.`, 'files');

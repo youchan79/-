@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import JSZip from 'jszip';
 import { all, one, run, nowIso, newId, uploadsDir, type Row } from './db.ts';
-import { AiError, aiMode, filePart, generateJson, generateText, youtubePart } from './ai.ts';
+import { AiError, aiMode, generateJson, isReadableImage, readDocuments } from './ai.ts';
+import { mediaSupport, normalizeTranscript, transcribeAudio, transcribeYoutube } from './media.ts';
 import {
   EXTRACT_PROMPTS,
   SYSTEM,
+  clipSource,
   materialPrompt,
   mockExtract,
   mockMaterial,
@@ -138,9 +140,11 @@ export function parseYoutubeId(url: string): string | null {
   return null;
 }
 
-export async function createYoutubeDoc(userId: string, url: string) {
+export async function createYoutubeDoc(userId: string, url: string, transcript?: string) {
   const vid = parseYoutubeId(url);
   if (!vid) throw new DocError('유튜브 링크를 확인해 주세요.');
+  const script = transcript?.trim() ? normalizeTranscript(transcript).slice(0, 200_000) : null;
+  if (!script && !mediaSupport.youtubeAuto) throw new DocError('영상 자막(스크립트)을 붙여 넣어 주세요.');
   const canonical = `https://www.youtube.com/watch?v=${vid}`;
   let title = '유튜브 영상';
   try {
@@ -152,13 +156,14 @@ export async function createYoutubeDoc(userId: string, url: string) {
   const id = newId('doc');
   const now = nowIso();
   run(
-    `INSERT INTO documents (id, user_id, kind, title, source_url, thumb, status, created_at, updated_at)
-     VALUES (?, ?, 'youtube', ?, ?, ?, 'processing', ?, ?)`,
+    `INSERT INTO documents (id, user_id, kind, title, source_url, thumb, status, source_text, created_at, updated_at)
+     VALUES (?, ?, 'youtube', ?, ?, ?, 'processing', ?, ?, ?)`,
     id,
     userId,
     title.slice(0, 120),
     canonical,
     `https://i.ytimg.com/vi/${vid}/hqdefault.jpg`,
+    script,
     now,
     now,
   );
@@ -225,33 +230,44 @@ async function extract(doc: Row, userId: string): Promise<{ text: string; pages:
   if (kind === 'memo') return { text: doc.source_text, pages: null };
   if (kind === 'docx' || kind === 'pptx') return extractOffice(kind, files[0]);
 
-  if (aiMode === 'mock') {
-    // 녹음은 브라우저 실시간 자막이 있으면 그걸 원문으로 쓴다.
-    if (kind === 'audio' && doc.source_text?.trim()) return { text: doc.source_text, pages: null };
-    return { text: mockExtract(kind, doc.title), pages: kind === 'pdf' ? 3 : null };
+  // 녹음은 브라우저 실시간 자막, 유튜브는 붙여 넣은 자막이 있으면 그대로 원문으로 쓴다.
+  if ((kind === 'audio' || kind === 'youtube') && doc.source_text?.trim()) return { text: doc.source_text, pages: null };
+
+  if (kind === 'audio') {
+    if (!mediaSupport.audioFile) {
+      if (aiMode === 'mock') return { text: mockExtract(kind, doc.title), pages: null };
+      throw new DocError('녹음 파일 받아쓰기는 아직 지원하지 않아요. 녹음 화면에서 녹음하면 실시간 자막으로 정리돼요.');
+    }
+    return { text: await transcribeAudio(userId, files[0], doc.mime, EXTRACT_PROMPTS.audio), pages: null };
+  }
+  if (kind === 'youtube') {
+    if (!mediaSupport.youtubeAuto) throw new DocError('영상 자막(스크립트)을 붙여 넣어 주세요.');
+    return { text: await transcribeYoutube(userId, doc.source_url, EXTRACT_PROMPTS.youtube), pages: null };
   }
 
-  const prompt = EXTRACT_PROMPTS[kind as keyof typeof EXTRACT_PROMPTS];
-  const parts =
-    kind === 'youtube'
-      ? [youtubePart(doc.source_url), { text: prompt }]
-      : [...(await Promise.all(files.map((f) => filePart(f, kind === 'image' ? mimeOf(f) : doc.mime)))), { text: prompt }];
-  const text = await generateText({
+  // PDF와 사진은 Claude가 직접 읽는다.
+  const inputs = files.map((f) => ({ path: f, mime: kind === 'image' ? mimeOf(f) : 'application/pdf' }));
+  const text = await readDocuments({
     userId,
     kind: `extract_${kind}`,
-    parts,
-    maxTokens: 60_000,
-    temperature: 0.1,
-    lowMediaResolution: kind === 'youtube',
-    mock: () => '',
+    files: inputs,
+    prompt: EXTRACT_PROMPTS[kind as 'pdf' | 'image'],
+    mock: () => mockExtract(kind, doc.title),
   });
-  const pages = kind === 'pdf' || kind === 'image' ? new Set([...text.matchAll(/\[p\.(\d+)\]/g)].map((m) => m[1])).size || null : null;
+  const pages = new Set([...text.matchAll(/\[p\.(\d+)\]/g)].map((m) => m[1])).size || null;
   return { text, pages };
 }
 
 function mimeOf(file: string) {
   const ext = path.extname(file).toLowerCase();
-  return ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.heic' ? 'image/heic' : 'image/jpeg';
+  return ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : ext === '.gif' ? 'image/gif' : ext === '.heic' || ext === '.heif' ? 'image/heic' : 'image/jpeg';
+}
+
+export function assertReadableImages(files: Array<{ originalname: string; mimetype: string }>) {
+  for (const f of files) {
+    const mime = f.mimetype.split(';')[0];
+    if (!isReadableImage(mime)) throw new DocError('JPG, PNG, WEBP 사진만 올릴 수 있어요. 아이폰 HEIC 사진은 JPG로 바꿔서 올려 주세요.');
+  }
 }
 
 export async function processDoc(docId: string, userId: string) {
@@ -277,16 +293,19 @@ export async function processDoc(docId: string, userId: string) {
 
 /* ---------- 학습 자료 ---------- */
 
-/** 설정 > AI 설정을 프롬프트에 반영한다. */
+/**
+ * 설정 > AI 설정을 프롬프트에 반영한다. system은 모든 생성에서 같아야 원문 캐시를 함께 쓰므로,
+ * 사용자별 지시는 user 메시지(할 일) 끝에 붙인다.
+ */
 function userStyle(userId: string | null, kind: string) {
-  if (!userId) return { system: SYSTEM, difficulty: undefined as string | undefined };
+  if (!userId) return { style: '', difficulty: undefined as string | undefined };
   const row = one('SELECT settings_json FROM users WHERE id = ?', userId);
   const s = JSON.parse(row?.settings_json || '{}');
   const extra: string[] = [];
-  if (s.answerLanguage === 'source') extra.push('- 위의 한국어 규칙 대신, 자료 원문과 같은 언어로 쓴다.');
+  if (s.answerLanguage === 'source') extra.push('- 한국어 규칙 대신, 자료 원문과 같은 언어로 쓴다.');
   if (kind === 'summary' && s.summaryLength === 'short') extra.push('- 요약은 3~4개 섹션, 섹션마다 한 문단으로 짧게 쓴다.');
   if (kind === 'summary' && s.summaryLength === 'long') extra.push('- 요약은 6~10개 섹션으로 자세히 쓴다.');
-  return { system: extra.length ? `${SYSTEM}\n${extra.join('\n')}` : SYSTEM, difficulty: s.quizDifficulty as string | undefined };
+  return { style: extra.length ? `\n${extra.join('\n')}` : '', difficulty: s.quizDifficulty as string | undefined };
 }
 
 export function getMaterial(docId: string, kind: MaterialKind) {
@@ -317,8 +336,9 @@ async function generateMaterial(docId: string, kind: MaterialKind, userId: strin
     const json = await generateJson<any>({
       userId,
       kind,
-      system: userStyle(doc.user_id ?? userId, kind).system,
-      prompt: materialPrompt(kind, doc.source_text),
+      system: SYSTEM,
+      source: clipSource(doc.source_text),
+      task: materialPrompt(kind, userStyle(doc.user_id ?? userId, kind).style),
       schema: schemas[kind],
       maxTokens: kind === 'summary' || kind === 'concepts' ? 12_000 : 6000,
       mock: () => mockMaterial(kind, doc.source_text, doc.title),
@@ -370,11 +390,12 @@ export function createSet(p: { docId: string; kind: SetKind; userId: string | nu
       const json = await generateJson<any>({
         userId: p.userId,
         kind: p.kind,
-        system: style.system,
-        prompt: setPrompt(p.kind, doc.source_text, { count: p.count, focus: p.focus, avoid, difficulty: p.difficulty ?? (p.kind === 'quiz' ? style.difficulty : undefined) }),
+        system: SYSTEM,
+        source: clipSource(doc.source_text),
+        cache: true,
+        task: setPrompt(p.kind, { count: p.count, focus: p.focus, avoid, difficulty: p.difficulty ?? (p.kind === 'quiz' ? style.difficulty : undefined), style: style.style }),
         schema: schemas[p.kind],
         maxTokens: 10_000,
-        temperature: 0.7,
         mock: () => mockSet(p.kind, doc.source_text, p.count),
       });
       run("UPDATE sets SET status = 'ready', json = ? WHERE id = ?", JSON.stringify(json), id);

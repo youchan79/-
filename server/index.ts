@@ -7,8 +7,10 @@ import { config, assertProdConfig } from './config.ts';
 import { all, one, run, nowIso, addDays, kstDayStartIso, logFunnel, newId } from './db.ts';
 import { attachIdentity, requireUser, createUser, normalizeEmail, setSession, clearSession, verifyPassword } from './auth.ts';
 import { aiMode, chatReply, AiError } from './ai.ts';
+import { mediaSupport } from './media.ts';
 import {
   DocError,
+  assertReadableImages,
   createFileDoc,
   createMemoDoc,
   createSet,
@@ -25,7 +27,6 @@ import { LimitError, assertCanExam, assertCanTutor, assertCanUpload, isPro, maxU
 import { createExam, getExam, listExams, startExam, submitExam } from './exam.ts';
 import {
   PaymentError,
-  cancelSubscription,
   handleFeedback,
   mockPay,
   normalizePhone,
@@ -68,6 +69,7 @@ app.get('/api/config', (_req, res) => {
     free: config.free,
     paymentProvider: config.paymentProvider,
     aiMode,
+    media: mediaSupport,
     business: config.business,
   });
 });
@@ -84,17 +86,6 @@ function meView(req: Request) {
 }
 
 app.get('/api/me', (req, res) => res.json(meView(req)));
-
-/** 랜딩에 보여 줄 실제 수치: 가입자 수(탈퇴 제외)와 AI 생성 건수. 1분 캐시. */
-let statsCache: { at: number; body: { users: number; generated: number; asOf: string } } | null = null;
-app.get('/api/stats/public', (_req, res) => {
-  if (!statsCache || Date.now() - statsCache.at > 60_000) {
-    const users = one<{ c: number }>("SELECT COUNT(*) AS c FROM users WHERE email NOT LIKE 'deleted\\_%' ESCAPE '\\'")!.c;
-    const generated = one<{ c: number }>("SELECT COUNT(*) AS c FROM ai_usage WHERE kind NOT LIKE 'extract\\_%' ESCAPE '\\'")!.c;
-    statsCache = { at: Date.now(), body: { users, generated, asOf: nowIso() } };
-  }
-  res.json(statsCache.body);
-});
 
 app.post(
   '/api/auth/signup',
@@ -149,10 +140,6 @@ app.post(
   requireUser,
   h(async (req, res) => {
     const userId = req.user!.id;
-    const sub = subscriptionView(userId);
-    if (sub.pro && sub.plan === 'monthly' && !sub.canceled) {
-      return res.status(400).json({ error: '정기결제를 먼저 해지한 뒤 탈퇴할 수 있어요.' });
-    }
     for (const d of all('SELECT id FROM documents WHERE user_id = ?', userId)) deleteDoc(d.id);
     run('DELETE FROM chats WHERE user_id = ?', userId);
     run('DELETE FROM exams WHERE user_id = ?', userId);
@@ -237,6 +224,10 @@ app.post(
       if (files.some((f) => f.size > limit)) {
         return res.status(413).json({ error: `파일이 너무 커요. ${isPro(req.user!.id) ? '' : '무료 플랜은 '}${Math.round(limit / 1024 / 1024)}MB까지 올릴 수 있어요.`, reason: 'size' });
       }
+      if (kind === 'image') assertReadableImages(files);
+      if (kind === 'audio' && !mediaSupport.audioFile && aiMode !== 'mock' && !(typeof req.body?.transcript === 'string' && req.body.transcript.trim())) {
+        return res.status(400).json({ error: '녹음 파일 받아쓰기는 아직 지원하지 않아요. 녹음 화면에서 녹음하면 실시간 자막으로 정리돼요.' });
+      }
       if (kind !== 'audio') assertCanUpload(req.user!.id, req.user!.created_at, kind);
       const b = req.body ?? {};
       const thumb = typeof b.thumb === 'string' && b.thumb.startsWith('data:image/') && b.thumb.length < 400_000 ? b.thumb : null;
@@ -263,7 +254,7 @@ app.post(
   requireUser,
   h(async (req, res) => {
     assertCanUpload(req.user!.id, req.user!.created_at, 'youtube');
-    const id = await createYoutubeDoc(req.user!.id, String(req.body?.url ?? ''));
+    const id = await createYoutubeDoc(req.user!.id, String(req.body?.url ?? ''), typeof req.body?.transcript === 'string' ? req.body.transcript : undefined);
     logFunnel('upload', req.anonId, req.user!.id);
     res.json({ id });
   }),
@@ -404,15 +395,14 @@ const TUTOR_SYSTEM = `너는 대학생의 24시간 전공 튜터다.
 - 수식은 일반 텍스트로 쓰고, 단계가 있는 풀이는 번호 목록으로 쓴다.
 - 과제를 대신 써 달라는 요청에는 초안과 함께 스스로 다듬을 포인트를 알려 준다.`;
 
-function chatSystem(docId: string | null) {
-  if (!docId) return TUTOR_SYSTEM;
-  const d = one('SELECT title, source_text FROM documents WHERE id = ?', docId);
-  if (!d?.source_text) return TUTOR_SYSTEM;
-  return `${TUTOR_SYSTEM}
-- 아래 [자료]를 우선 근거로 답하고, 근거 위치를 (p.3) 또는 (12:30) 처럼 붙인다. 자료에 없는 내용은 일반 지식이라고 밝히고 답한다.
+const DOC_TUTOR_SYSTEM = `${TUTOR_SYSTEM}
+- 아래 [자료]를 우선 근거로 답하고, 근거 위치를 (p.3) 또는 (12:30) 처럼 붙인다. 자료에 없는 내용은 일반 지식이라고 밝히고 답한다.`;
 
-[자료: ${d.title}]
-${String(d.source_text).slice(0, 100_000)}`;
+function chatContext(docId: string | null) {
+  if (!docId) return { system: TUTOR_SYSTEM, source: null };
+  const d = one('SELECT title, source_text FROM documents WHERE id = ?', docId);
+  if (!d?.source_text) return { system: TUTOR_SYSTEM, source: null };
+  return { system: DOC_TUTOR_SYSTEM, source: { title: d.title as string, text: String(d.source_text).slice(0, 300_000) } };
 }
 
 app.get('/api/chats', requireUser, (req, res) => {
@@ -470,9 +460,11 @@ app.post(
       'SELECT role, content FROM (SELECT id, role, content FROM chat_messages WHERE chat_id = ? ORDER BY id DESC LIMIT 20) ORDER BY id ASC',
       c.id,
     );
+    const ctx = chatContext(c.doc_id);
     const reply = await chatReply({
       userId: req.user!.id,
-      system: chatSystem(c.doc_id),
+      system: ctx.system,
+      source: ctx.source,
       history,
       message,
       search: req.body?.search === true || /최신|검색|뉴스|요즘|올해/.test(message),
@@ -522,7 +514,7 @@ app.post(
   '/api/checkout',
   requireUser,
   h(async (req, res) => {
-    const plan: Plan = req.body?.plan === 'yearly' ? 'yearly' : 'monthly';
+    const plan: Plan = 'lifetime';
     const phone = normalizePhone(req.body?.phone);
     if (!phone) return res.status(400).json({ error: '휴대폰 번호를 확인해 주세요.' });
     const out = await startCheckout({ user: req.user!, plan, phone, origin: origin(req) });
@@ -556,14 +548,6 @@ app.post(
   },
 );
 
-app.post(
-  '/api/subscription/cancel',
-  requireUser,
-  h(async (req, res) => {
-    await cancelSubscription(req.user!.id);
-    res.json(meView(req));
-  }),
-);
 
 // 개발용 가짜 결제창
 app.get('/api/payapp/mock-order/:orderId', requireUser, (req, res) => {

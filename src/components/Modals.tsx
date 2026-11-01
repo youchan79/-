@@ -98,10 +98,10 @@ export function UpgradeModal() {
   return (
     <Modal open onClose={closeUpgrade} width={440} className="!p-0">
       <div className="gradient-pro rounded-t-[24px] px-6 pb-6 pt-8 text-[#111]">
-        <div className="text-[15px]">Pro 플랜</div>
+        <div className="text-[15px]">Pro 평생 이용권</div>
         <div className="mt-1 text-[30px] font-semibold tracking-tight">
-          {config ? won(config.plans.monthly.price) : ''}
-          <span className="ml-1 text-[14px] font-normal">/월</span>
+          {config ? won(config.plans.lifetime.price) : ''}
+          <span className="ml-1 text-[14px] font-normal">/ 평생</span>
         </div>
       </div>
       <div className="p-6">
@@ -122,9 +122,9 @@ export function UpgradeModal() {
             navigate('/subscription');
           }}
         >
-          무제한으로 시작하기
+          한 번 결제로 평생 무제한
         </Button>
-        <p className="mt-2 text-center text-[12px] text-muted">언제든 해지할 수 있어요</p>
+        <p className="mt-2 text-center text-[12px] text-muted">자동 결제 없이 딱 한 번만 결제해요</p>
       </div>
     </Modal>
   );

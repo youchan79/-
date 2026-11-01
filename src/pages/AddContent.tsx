@@ -42,16 +42,20 @@ export function useUploader() {
 }
 
 export function YoutubeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { config } = useApp();
   const [url, setUrl] = useState('');
+  const [script, setScript] = useState('');
   const [busy, setBusy] = useState(false);
   const onError = useApiErrorHandler();
+  const needScript = !config?.media.youtubeAuto;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     try {
-      const r = await api<{ id: string }>('/api/docs/youtube', { url });
+      const r = await api<{ id: string }>('/api/docs/youtube', { url, transcript: script });
       onClose();
       setUrl('');
+      setScript('');
       navigate(`/doc/${r.id}`);
     } catch (err) {
       onError(err);
@@ -65,7 +69,9 @@ export function YoutubeModal({ open, onClose }: { open: boolean; onClose: () => 
         <Youtube size={20} />
       </div>
       <h2 className="mt-4 text-[20px] font-semibold">YouTube 영상</h2>
-      <p className="mt-1 text-[14px] text-muted">강의 영상 링크를 붙여 넣으면 AI가 내용을 받아 적고 정리해요.</p>
+      <p className="mt-1 text-[14px] text-muted">
+        {needScript ? '영상 링크와 자막(스크립트)을 붙여 넣으면 AI가 정리해요.' : '강의 영상 링크를 붙여 넣으면 AI가 내용을 받아 적고 정리해요.'}
+      </p>
       <form onSubmit={submit} className="mt-5 space-y-3">
         <input
           autoFocus
@@ -74,7 +80,19 @@ export function YoutubeModal({ open, onClose }: { open: boolean; onClose: () => 
           placeholder="https://www.youtube.com/watch?v=..."
           className="h-12 w-full rounded-xl border border-line bg-canvas px-4 text-[15px] outline-none focus:border-ink"
         />
-        <Button type="submit" size="lg" className="w-full" disabled={busy || !url.trim()}>
+        <div>
+          <textarea
+            value={script}
+            onChange={(e) => setScript(e.target.value)}
+            rows={5}
+            placeholder={needScript ? '자막(스크립트)을 붙여 넣어 주세요' : '자막(스크립트)이 있으면 붙여 넣어 주세요 (선택)'}
+            className="w-full resize-none rounded-xl border border-line bg-canvas p-4 text-[14px] leading-[1.6] outline-none focus:border-ink"
+          />
+          <p className="mt-1.5 text-[12px] leading-[1.6] text-muted">
+            유튜브 영상 아래 설명란의 <b className="font-medium text-sub">스크립트 표시</b>를 누른 뒤 스크립트 전체를 드래그해 복사하면 돼요. 시간 표시도 그대로 붙여 넣으세요.
+          </p>
+        </div>
+        <Button type="submit" size="lg" className="w-full" disabled={busy || !url.trim() || (needScript && script.trim().length < 20)}>
           {busy ? <Spinner className="h-4 w-4" /> : '추가하기'}
         </Button>
       </form>
