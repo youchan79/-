@@ -71,8 +71,8 @@ const rawSchemas = {
           properties: {
             question: str,
             hint: str,
-            options: { type: 'array', items: str, description: '보기 정확히 4개' },
-            answer: { type: 'integer', description: '정답 보기 번호 0~3' },
+            options: { type: 'array', items: str, description: '보기 4개. OX 문제만 ["O", "X"] 2개' },
+            answer: { type: 'integer', description: '정답 보기 번호 (0부터)' },
             explanation: str,
             ref: str,
           },
@@ -210,15 +210,26 @@ export function materialPrompt(kind: MaterialKind, style = '') {
   return `위 [자료]로 다음을 만든다.\n${task}${style}`;
 }
 
-export function setPrompt(kind: SetKind, opts: { count: number; focus?: string; avoid?: string[]; difficulty?: string; style?: string }) {
+export type QuizType = 'choice' | 'ox' | 'blank';
+const QUIZ_TYPE_RULE: Record<QuizType, string> = {
+  choice: '객관식: 보기 4개, 정답 위치를 고르게 섞는다',
+  ox: 'OX: 맞는지 틀린지 판단할 진술 한 문장, options는 ["O", "X"], 정답이 O면 answer 0, X면 1',
+  blank: '빈칸 채우기: 핵심 문장의 핵심어 자리를 ____ 로 비우고, 들어갈 말 후보 4개를 보기로',
+};
+
+export function setPrompt(kind: SetKind, opts: { count: number; focus?: string; avoid?: string[]; difficulty?: string; style?: string; types?: QuizType[] }) {
   const focus = opts.focus ? `\n- 이번에는 "${opts.focus}" 개념에 집중해서 만든다.` : '';
   const avoid = opts.avoid?.length ? `\n- 아래 이미 낸 문제와 겹치지 않게 만든다:\n${opts.avoid.map((q) => `  · ${q}`).join('\n')}` : '';
   const diff = opts.difficulty ? `\n- 난이도: ${opts.difficulty}` : '';
+  const types =
+    kind === 'quiz' && opts.types?.length && !(opts.types.length === 1 && opts.types[0] === 'choice')
+      ? `\n- 아래 형식만 쓰고, 여러 개면 고르게 섞는다:\n${opts.types.map((t) => `  · ${QUIZ_TYPE_RULE[t]}`).join('\n')}`
+      : '';
   const task =
     kind === 'quiz'
       ? `객관식 4지선다 퀴즈 ${opts.count}문제를 만든다. 단순 암기보다 개념을 적용하는 문제를 섞는다. 오답 보기도 그럴듯하게 만든다. 정답 위치는 고르게 섞는다. hint는 정답을 직접 말하지 않는 한 문장, explanation은 왜 정답이고 다른 보기는 왜 틀렸는지.`
       : `플래시카드 ${opts.count}장을 만든다. 앞면은 질문 또는 용어, 뒷면은 2문장 이내의 답.`;
-  return `위 [자료]로 다음을 만든다.\n${task}${focus}${diff}${avoid}${opts.style ?? ''}`;
+  return `위 [자료]로 다음을 만든다.\n${task}${focus}${diff}${types}${avoid}${opts.style ?? ''}`;
 }
 
 export type ExamType = 'choice' | 'ox' | 'blank' | 'short';
@@ -343,19 +354,25 @@ export function mockMaterial(kind: MaterialKind, source: string, title: string):
   };
 }
 
-export function mockSet(kind: SetKind, source: string, count: number): unknown {
+export function mockSet(kind: SetKind, source: string, count: number, types: QuizType[] = ['choice']): unknown {
   const ss = sentences(source);
   const rs = refs(source);
   if (kind === 'quiz') {
     return {
-      questions: Array.from({ length: count }, (_, i) => ({
-        question: `(가짜 문제 ${i + 1}) 다음 중 자료 내용과 일치하는 것은?`,
-        hint: '자료의 앞부분을 다시 떠올려 보세요.',
-        options: [0, 1, 2, 3].map((k) => short(pick(ss, i * 4 + k), 40)),
-        answer: i % 4,
-        explanation: `정답은 ${'ABCD'[i % 4]}입니다. ${pick(ss, i * 4 + (i % 4))}`,
-        ref: pick(rs, i),
-      })),
+      questions: Array.from({ length: count }, (_, i) => {
+        const type = types[i % types.length];
+        if (type === 'ox') {
+          return { question: `(가짜 OX ${i + 1}) ${short(pick(ss, i), 50)}`, hint: '자료의 표현을 그대로 떠올려 보세요.', options: ['O', 'X'], answer: i % 2, explanation: '개발용 가짜 해설입니다.', ref: pick(rs, i) };
+        }
+        return {
+          question: type === 'blank' ? `(가짜 빈칸 ${i + 1}) ${short(pick(ss, i), 30)} 의 ____ 에 들어갈 말은?` : `(가짜 문제 ${i + 1}) 다음 중 자료 내용과 일치하는 것은?`,
+          hint: '자료의 앞부분을 다시 떠올려 보세요.',
+          options: [0, 1, 2, 3].map((k) => short(pick(ss, i * 4 + k), type === 'blank' ? 12 : 40)),
+          answer: i % 4,
+          explanation: `정답은 ${'ABCD'[i % 4]}입니다. ${pick(ss, i * 4 + (i % 4))}`,
+          ref: pick(rs, i),
+        };
+      }),
     };
   }
   return {

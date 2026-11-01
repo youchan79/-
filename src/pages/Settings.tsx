@@ -177,18 +177,55 @@ function AiSettings() {
     const r = await api<{ settings: Record<string, string> }>('/api/settings', patch, { method: 'PUT' });
     setMe({ ...me, settings: r.settings });
   };
+  const quizTypes = (s.quizTypes ?? 'choice').split(',').filter(Boolean);
+  const toggleType = (t: string) => {
+    const next = quizTypes.includes(t) ? quizTypes.filter((x) => x !== t) : [...quizTypes, t];
+    if (next.length) void save({ quizTypes: next.join(',') });
+  };
   return (
     <>
+      <p className="pt-4 text-[14px] leading-[1.6] text-muted">바꾼 설정은 다음에 새로 만드는 학습 자료부터 적용돼요. 이미 만든 자료는 그대로예요.</p>
       <Row label="학습 자료 언어" sub="요약, 퀴즈, 플래시카드를 쓸 언어">
         <Segmented value={s.answerLanguage ?? 'ko'} onChange={(v) => void save({ answerLanguage: v })} options={[['ko', '한국어'], ['source', '자료 언어']]} />
       </Row>
+      <h2 className="pb-1 pt-6 text-[15px] font-semibold">요약</h2>
       <Row label="요약 길이">
         <Segmented value={s.summaryLength ?? 'normal'} onChange={(v) => void save({ summaryLength: v })} options={[['short', '짧게'], ['normal', '보통'], ['long', '자세히']]} />
       </Row>
-      <Row label="퀴즈 기본 난이도">
+      <Row label="쓰는 방식" sub="항목은 핵심을 줄마다, 문단은 이어지는 글로">
+        <Segmented value={s.summaryFormat ?? 'auto'} onChange={(v) => void save({ summaryFormat: v })} options={[['auto', '알아서'], ['bullet', '항목'], ['prose', '문단']]} />
+      </Row>
+      <Row label="쉬운 설명 붙이기" sub="어려운 대목마다 비유를 섞은 풀이를 달아요">
+        <Segmented value={s.summaryEasy ?? 'on'} onChange={(v) => void save({ summaryEasy: v })} options={[['on', '켜기'], ['off', '끄기']]} />
+      </Row>
+      <h2 className="pb-1 pt-6 text-[15px] font-semibold">퀴즈</h2>
+      <Row label="기본 난이도">
         <Segmented value={s.quizDifficulty ?? '보통'} onChange={(v) => void save({ quizDifficulty: v })} options={[['쉬움', '쉬움'], ['보통', '보통'], ['어려움', '어려움']]} />
       </Row>
-      <p className="pt-4 text-[13px] text-muted">바꾼 설정은 다음에 만드는 학습 자료부터 적용돼요.</p>
+      <div className="border-b border-line py-4">
+        <div className="text-[15px]">문제 형식</div>
+        <div className="mt-0.5 text-[13px] text-muted">하나 이상 고르면 골고루 섞어 내요</div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {[
+            ['choice', '객관식'],
+            ['ox', 'OX'],
+            ['blank', '빈칸 채우기'],
+          ].map(([t, label]) => {
+            const on = quizTypes.includes(t);
+            return (
+              <button
+                key={t}
+                type="button"
+                aria-pressed={on}
+                onClick={() => toggleType(t)}
+                className={`h-10 rounded-full px-4 text-[15px] transition ${on ? 'bg-solid font-medium text-on-solid' : 'bg-soft text-sub hover:text-ink'}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </>
   );
 }

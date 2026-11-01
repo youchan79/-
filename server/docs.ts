@@ -15,6 +15,7 @@ import {
   schemas,
   setPrompt,
   type MaterialKind,
+  type QuizType,
   type SetKind,
 } from './prompts.ts';
 
@@ -331,14 +332,24 @@ export async function processDoc(docId: string, userId: string) {
  * 사용자별 지시는 user 메시지(할 일) 끝에 붙인다.
  */
 function userStyle(userId: string | null, kind: string) {
-  if (!userId) return { style: '', difficulty: undefined as string | undefined };
+  if (!userId) return { style: '', difficulty: undefined as string | undefined, easy: true, quizTypes: ['choice'] as QuizType[] };
   const row = one('SELECT settings_json FROM users WHERE id = ?', userId);
   const s = JSON.parse(row?.settings_json || '{}');
   const extra: string[] = [];
+  const easy = s.summaryEasy !== 'off';
   if (s.answerLanguage === 'source') extra.push('- 한국어 규칙 대신, 자료 원문과 같은 언어로 쓴다.');
   if (kind === 'summary' && s.summaryLength === 'short') extra.push('- 요약은 3~4개 섹션, 섹션마다 한 문단으로 짧게 쓴다.');
   if (kind === 'summary' && s.summaryLength === 'long') extra.push('- 요약은 6~10개 섹션으로 자세히 쓴다.');
-  return { style: extra.length ? `\n${extra.join('\n')}` : '', difficulty: s.quizDifficulty as string | undefined };
+  if (kind === 'summary' && s.summaryFormat === 'bullet') extra.push('- 섹션 body는 핵심을 짧은 항목(- 로 시작하는 줄) 위주로 쓴다.');
+  if (kind === 'summary' && s.summaryFormat === 'prose') extra.push('- 섹션 body는 항목 나열 대신 이어지는 문단으로 풀어 쓴다.');
+  if (kind === 'summary' && !easy) extra.push('- easy(쉬운 설명)는 쓰지 않고 빈 문자열로 둔다.');
+  const quizTypes = (['choice', 'ox', 'blank'] as QuizType[]).filter((t) => String(s.quizTypes ?? 'choice').split(',').includes(t));
+  return {
+    style: extra.length ? `\n${extra.join('\n')}` : '',
+    difficulty: s.quizDifficulty as string | undefined,
+    easy,
+    quizTypes: quizTypes.length ? quizTypes : (['choice'] as QuizType[]),
+  };
 }
 
 export function getMaterial(docId: string, kind: MaterialKind) {
@@ -365,17 +376,20 @@ async function generateMaterial(docId: string, kind: MaterialKind, userId: strin
     kind,
     nowIso(),
   );
+  const style = userStyle(doc.user_id ?? userId, kind);
   try {
     const json = await generateJson<any>({
       userId,
       kind,
       system: SYSTEM,
       source: clipSource(doc.source_text),
-      task: materialPrompt(kind, userStyle(doc.user_id ?? userId, kind).style),
+      task: materialPrompt(kind, style.style),
       schema: schemas[kind],
       maxTokens: kind === 'summary' || kind === 'concepts' ? 12_000 : 6000,
       mock: () => mockMaterial(kind, doc.source_text, doc.title),
     });
+    // 설정 > AI 설정에서 쉬운 설명을 끄면 AI가 써 와도 지운다
+    if (kind === 'summary' && !style.easy && Array.isArray(json.sections)) for (const sec of json.sections) sec.easy = '';
     run("UPDATE materials SET status = 'ready', json = ?, updated_at = ? WHERE doc_id = ? AND kind = ?", JSON.stringify(json), nowIso(), docId, kind);
     // 녹음, 사진, 메모는 파일 이름이 없으니 요약이 붙인 제목을 쓴다.
     if (kind === 'summary' && ['audio', 'image', 'memo'].includes(doc.kind) && json.title) {
@@ -426,10 +440,10 @@ export function createSet(p: { docId: string; kind: SetKind; userId: string | nu
         system: SYSTEM,
         source: clipSource(doc.source_text),
         cache: true,
-        task: setPrompt(p.kind, { count: p.count, focus: p.focus, avoid, difficulty: p.difficulty ?? (p.kind === 'quiz' ? style.difficulty : undefined), style: style.style }),
+        task: setPrompt(p.kind, { count: p.count, focus: p.focus, avoid, difficulty: p.difficulty ?? (p.kind === 'quiz' ? style.difficulty : undefined), style: style.style, types: style.quizTypes }),
         schema: schemas[p.kind],
         maxTokens: 10_000,
-        mock: () => mockSet(p.kind, doc.source_text, p.count),
+        mock: () => mockSet(p.kind, doc.source_text, p.count, style.quizTypes),
       });
       run("UPDATE sets SET status = 'ready', json = ? WHERE id = ?", JSON.stringify(json), id);
     } catch (e) {

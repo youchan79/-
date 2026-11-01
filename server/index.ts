@@ -321,7 +321,7 @@ app.put('/api/settings', requireUser, (req, res) => {
   const row = one('SELECT settings_json FROM users WHERE id = ?', req.user!.id);
   const cur = JSON.parse(row?.settings_json || '{}');
   const next = { ...cur };
-  for (const k of ['theme', 'answerLanguage', 'summaryLength', 'quizDifficulty']) {
+  for (const k of ['theme', 'answerLanguage', 'summaryLength', 'quizDifficulty', 'summaryFormat', 'summaryEasy', 'quizTypes']) {
     if (typeof req.body?.[k] === 'string') next[k] = req.body[k].slice(0, 20);
   }
   run('UPDATE users SET settings_json = ? WHERE id = ?', JSON.stringify(next), req.user!.id);

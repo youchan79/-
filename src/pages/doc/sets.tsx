@@ -153,6 +153,7 @@ function QuizPlayer({ set, onHome, onRef }: { set: StudySet<{ questions: QuizQ[]
   const qi = order[pos];
   const q = qs[qi];
   const chosen = p.answers[qi];
+  const isOX = q?.options.length === 2 && q.options[0] === 'O' && q.options[1] === 'X';
   useEffect(() => setHint(false), [qi]);
 
   if (!loaded) return null;
@@ -240,9 +241,9 @@ function QuizPlayer({ set, onHome, onRef }: { set: StudySet<{ questions: QuizQ[]
                     answered && isAnswer ? 'border-green bg-green text-white' : answered && isChosen ? 'border-red bg-red text-white' : 'border-line text-muted'
                   }`}
                 >
-                  {'ABCD'[i]}
+                  {isOX ? opt : 'ABCD'[i]}
                 </span>
-                <span className="text-[16px]">{opt}</span>
+                <span className="text-[16px]">{isOX ? (opt === 'O' ? '맞아요' : '틀려요') : opt}</span>
               </div>
               {answered && (isAnswer || isChosen) && (
                 <div className="mt-2 pl-10">
