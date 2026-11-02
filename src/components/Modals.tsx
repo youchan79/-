@@ -120,6 +120,8 @@ function SocialButton({ kind, onClick, disabled }: { kind: SocialKind; onClick: 
  */
 let gsiHolder: HTMLDivElement | null = null;
 let gsiWidth = 0;
+// 버튼 iframe이 다 뜨고 '○○ 계정'으로 바뀔 때까지는 보여 주지 않는다 (그동안은 빈 흰 버튼 자리만)
+let gsiReadyAt = Infinity;
 // 로그인 창 안쪽 폭: 창 최대 420px, 양옆 여백 16px, 안쪽 여백 24px, 테두리 1px
 const expectedGoogleWidth = () => Math.min(400, Math.min(420, window.innerWidth - 32) - 50);
 
@@ -147,6 +149,14 @@ function prerenderGoogle(clientId: string, autoSelect: boolean, width = expected
       locale: 'ko',
       width,
     });
+    // iframe이 뜬 뒤 계정 확인까지 조금 더 기다린다. load가 안 와도 2.5초 뒤에는 보여 준다.
+    gsiReadyAt = Date.now() + 2500;
+    const watch = (tries = 0) => {
+      const f = gsiHolder?.querySelector('iframe');
+      if (f) f.addEventListener('load', () => (gsiReadyAt = Math.min(gsiReadyAt, Date.now() + 700)), { once: true });
+      else if (tries < 120) requestAnimationFrame(() => watch(tries + 1));
+    };
+    watch();
   });
 }
 
@@ -166,7 +176,7 @@ function GoogleOfficialButton({ clientId, autoSelect }: { clientId: string; auto
       // 창 안에서 스크롤돼 카드 밖으로 나가면 숨긴다
       const box = el.closest('.overflow-y-auto')?.getBoundingClientRect();
       const inside = !!r.width && (!box || (r.top >= box.top && r.bottom <= box.bottom));
-      if (inside) Object.assign(gsiHolder.style, { left: `${r.left + (r.width - gsiWidth) / 2}px`, top: `${r.top}px`, visibility: 'visible', pointerEvents: 'auto' });
+      if (inside && Date.now() >= gsiReadyAt) Object.assign(gsiHolder.style, { left: `${r.left + (r.width - gsiWidth) / 2}px`, top: `${r.top}px`, visibility: 'visible', pointerEvents: 'auto' });
       else hide();
       raf = requestAnimationFrame(place);
     };
@@ -179,7 +189,13 @@ function GoogleOfficialButton({ clientId, autoSelect }: { clientId: string; auto
       hide();
     };
   }, [clientId]);
-  return <div ref={ref} className="h-10 w-full" />;
+  // 구글 버튼이 준비되기 전에 보이는 같은 모양의 빈 버튼 (준비되면 그 위에 구글 버튼이 덮인다)
+  return (
+    <div ref={ref} className="flex h-10 w-full items-center justify-center gap-2.5 rounded-full border border-[#dadce0] bg-white" aria-hidden>
+      <GoogleMark />
+      <span className="h-2.5 w-28 rounded-full bg-[#ececec]" />
+    </div>
+  );
 }
 
 const PROVIDER_NAME: Record<HintProvider, string> = { kakao: '카카오', naver: '네이버', google: 'Google', email: '이메일' };
@@ -261,7 +277,7 @@ export function LoginModal() {
   useEffect(() => {
     if (!googleOn || !loggedOut) return;
     const h = readLoginHint();
-    const t = window.setTimeout(() => void prerenderGoogle(auth!.google!, h?.p === 'google' && !h.out).catch(() => {}), 1500);
+    const t = window.setTimeout(() => void prerenderGoogle(auth!.google!, h?.p === 'google' && !h.out).catch(() => {}), 600);
     return () => window.clearTimeout(t);
   }, [googleOn, loggedOut, auth]);
 
