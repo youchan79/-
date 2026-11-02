@@ -74,11 +74,18 @@ function storeFiles(docId: string, files: IncomingFile[]): string[] {
 
 export function docFiles(doc: Row): string[] {
   if (!doc.file_path) return [];
+  let list: string[];
   try {
-    return JSON.parse(doc.file_path);
+    list = JSON.parse(doc.file_path);
   } catch {
-    return [doc.file_path];
+    list = [doc.file_path];
   }
+  // 백업을 다른 서버·폴더에 풀어 복구한 경우: 저장된 절대 경로 대신 지금 uploads 폴더의 같은 '자료번호/파일 이름'을 쓴다
+  return list.map((f) => {
+    if (fs.existsSync(f)) return f;
+    const parts = f.split(/[\\/]/);
+    return path.join(uploadsDir, parts[parts.length - 2] ?? '', parts[parts.length - 1] ?? '');
+  });
 }
 
 const stripExt = (name: string) => name.replace(/\.[^.]+$/, '');

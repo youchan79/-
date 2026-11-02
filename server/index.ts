@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import express, { type Request, type Response, type NextFunction } from 'express';
 import multer from 'multer';
 import { config, assertProdConfig } from './config.ts';
-import { all, one, run, nowIso, addDays, kstDayStartIso, logFunnel, newId } from './db.ts';
+import { all, one, run, nowIso, addDays, kstDayStartIso, logFunnel, newId, db, uploadsDir } from './db.ts';
 import {
   attachIdentity,
   requireUser,
@@ -1024,6 +1024,62 @@ app.post('/api/payapp/mock-renewal', requireUser, (req, res) => {
 });
 
 /* ---------- 관리자 ---------- */
+
+/** tar(ustar) 한 항목: 512바이트 머리 + 내용 + 512 맞춤 */
+function tarHeader(name: string, size: number, mtime: number) {
+  const h = Buffer.alloc(512);
+  const put = (s: string, off: number, len: number) => h.write(s, off, len, 'utf8');
+  const oct = (n: number, len: number) => n.toString(8).padStart(len - 1, '0') + '\0';
+  put(name, 0, 100);
+  put(oct(0o644, 8), 100, 8);
+  put(oct(0, 8), 108, 8);
+  put(oct(0, 8), 116, 8);
+  put(oct(size, 12), 124, 12);
+  put(oct(Math.floor(mtime / 1000), 12), 136, 12);
+  put('        ', 148, 8);
+  put('0', 156, 1);
+  put('ustar\0' + '00', 257, 8);
+  let sum = 0;
+  for (const b of h) sum += b;
+  put(sum.toString(8).padStart(6, '0') + '\0 ', 148, 8);
+  return h;
+}
+
+async function writeTarFile(res: Response, name: string, abs: string) {
+  const st = fs.statSync(abs);
+  if (!res.write(tarHeader(name, st.size, st.mtimeMs))) await new Promise((r) => res.once('drain', r));
+  for await (const chunk of fs.createReadStream(abs)) if (!res.write(chunk)) await new Promise((r) => res.once('drain', r));
+  const pad = (512 - (st.size % 512)) % 512;
+  if (pad) res.write(Buffer.alloc(pad));
+}
+
+/** 관리자 백업: 운영 DB의 일관된 사본(studyai.db)과 올린 파일(uploads/)을 tar 하나로 내려준다. 다른 서버의 DATA_DIR에 풀면 그대로 복구된다. */
+app.get('/api/admin/backup', async (req, res) => {
+  if (!config.adminKey || req.headers['x-admin-key'] !== config.adminKey) return res.status(401).json({ error: '관리자 키가 맞지 않아요.' });
+  const snap = path.join(config.dataDir, `.backup-${Date.now()}.db`);
+  try {
+    db.exec(`VACUUM INTO '${snap.replace(/'/g, "''")}'`);
+    const files: Array<[string, string]> = [['studyai.db', snap]];
+    const walk = (dir: string, rel: string) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (e.isDirectory()) walk(path.join(dir, e.name), `${rel}/${e.name}`);
+        else if (e.isFile()) files.push([`${rel}/${e.name}`, path.join(dir, e.name)]);
+      }
+    };
+    walk(uploadsDir, 'uploads');
+    res.setHeader('Content-Type', 'application/x-tar');
+    res.setHeader('Content-Disposition', `attachment; filename="studyai-data-${nowIso().slice(0, 10)}.tar"`);
+    res.setHeader('X-Backup-Files', String(files.length));
+    for (const [name, abs] of files) await writeTarFile(res, name, abs);
+    res.end(Buffer.alloc(1024));
+  } catch (e: any) {
+    console.error('[backup] 실패', e?.message);
+    if (!res.headersSent) res.status(500).json({ error: '백업을 만들지 못했어요.' });
+    else res.destroy();
+  } finally {
+    fs.rmSync(snap, { force: true });
+  }
+});
 
 app.get('/api/admin/stats', (req, res) => {
   if (!config.adminKey || req.headers['x-admin-key'] !== config.adminKey) return res.status(401).json({ error: '관리자 키가 맞지 않아요.' });
