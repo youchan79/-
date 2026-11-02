@@ -139,7 +139,8 @@ function GoogleOfficialButton({ clientId, autoSelect }: { clientId: string; auto
       alive = false;
     };
   }, [clientId]);
-  return <div ref={ref} className="flex h-10 w-full justify-center" />;
+  // 어두운 테마에서 구글 버튼 iframe 뒤에 흰 사각형이 비치지 않게 iframe 쪽 color-scheme을 밝게 맞춘다
+  return <div ref={ref} className="flex h-10 w-full justify-center" style={{ colorScheme: 'light' }} />;
 }
 
 const PROVIDER_NAME: Record<HintProvider, string> = { kakao: '카카오', naver: '네이버', google: 'Google', email: '이메일' };
