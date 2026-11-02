@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  AlignLeft,
   BookOpen,
   Brain,
   Briefcase,
   Building2,
-  Check,
+  CircleCheck,
   Clapperboard,
   ClipboardList,
   Cog,
@@ -20,6 +21,7 @@ import {
   ListChecks,
   MessageCircle,
   Mic,
+  Network,
   NotebookPen,
   Scale,
   ScrollText,
@@ -45,8 +47,9 @@ function MiniSlide() {
   return (
     <div className="space-y-3 p-2 break-keep text-[#111] @min-[700px]:p-4">
       {[
-        { n: '01', t: '다중 저장 모형', s: 'Atkinson & Shiffrin, 1968' },
-        { n: '02', t: '망각 곡선', s: 'Ebbinghaus, 1885' },
+        { n: '01', t: '다중 저장 모형', s: 'Atkinson & Shiffrin, 1968', cols: ['감각 기억', '단기 기억', '장기 기억'], vals: ['0.5~4초', '7±2 항목', '무제한'] },
+        { n: '02', t: '망각 곡선', s: 'Ebbinghaus, 1885', cols: ['20분 뒤', '1일 뒤', '6일 뒤'], vals: ['58% 기억', '34% 기억', '25% 기억'] },
+        { n: '03', t: '간섭 이론', s: 'McGeoch, 1932', cols: ['순행 간섭', '역행 간섭', '줄이는 법'], vals: ['옛 정보가 방해', '새 정보가 방해', '간격 두고 복습'] },
       ].map((p) => (
         <div key={p.n} className="rounded-md border border-[#e7e7e7] bg-white p-2.5 @min-[700px]:p-4">
           <div className="flex items-start justify-between">
@@ -58,12 +61,16 @@ function MiniSlide() {
             <div className="text-[22px] font-bold leading-none text-[#e9e9e9] @min-[700px]:text-[34px]">{p.n}</div>
           </div>
           <div className="mt-3 grid grid-cols-3 gap-x-1 gap-y-1 border-t border-[#222] pt-2 text-[9px] leading-tight @min-[700px]:gap-2">
-            <span className="font-semibold">감각 기억</span>
-            <span className="font-semibold">단기 기억</span>
-            <span className="font-semibold">장기 기억</span>
-            <span className="text-[#888]">0.5~4초</span>
-            <span className="text-[#888]">7±2 항목</span>
-            <span className="text-[#888]">무제한</span>
+            {p.cols.map((c) => (
+              <span key={c} className="font-semibold">
+                {c}
+              </span>
+            ))}
+            {p.vals.map((v) => (
+              <span key={v} className="text-[#888]">
+                {v}
+              </span>
+            ))}
           </div>
         </div>
       ))}
@@ -173,20 +180,28 @@ function MiniContent({ tab }: { tab: string }) {
           ))}
         </tbody>
       </table>
+      <div className="mt-4 text-[13px] font-semibold">
+        망각 곡선 <span className="rounded bg-[#eee] px-1 text-[9px] font-normal text-[#888]">p.3</span>
+      </div>
+      <p className="mt-2 text-[11px] leading-[1.7] text-[#444]">
+        외운 내용은 하루 만에 절반 넘게 잊혀요. <b>잊기 직전에 다시 떠올리는 간격 반복</b>이 가장 오래 남는 방법이에요.
+      </p>
+      <div className="mt-2 text-[10px] text-[#999]">쉬운 설명 ›</div>
     </div>
   );
 }
 
 export function MiniApp({ tab = '퀴즈' }: { tab?: string }) {
   return (
-    <div className="@container overflow-hidden rounded-[18px] border border-[#e7e7e7] bg-white text-left text-[#111] shadow-[0_20px_60px_rgba(40,50,120,0.18)]">
-      <div className="flex h-9 items-center gap-2 border-b border-[#eee] px-3 text-[10px]">
+    // 레퍼런스 화면과 같은 비율(1738:1080)
+    <div className="@container flex aspect-[1738/1080] flex-col overflow-hidden rounded-[18px] border border-[#e7e7e7] bg-white text-left text-[#111] shadow-[0_20px_60px_rgba(40,50,120,0.18)]">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-[#eee] px-3 text-[10px]">
         <span className="text-[#999]">←</span>
         <span className="rounded-full border border-[#e5e5e5] px-1.5 text-[9px] text-[#888]">샘플</span>
         <span className="font-medium">인지심리학 · 기억과 망각</span>
         <span className="ml-auto rounded-full bg-[#111] px-2.5 py-0.5 text-[9px] text-white">로그인</span>
       </div>
-      <div className="grid h-[300px] grid-cols-[42%_1fr] @min-[700px]:h-[380px]">
+      <div className="grid min-h-0 flex-1 grid-cols-[42%_1fr]">
         <div className="overflow-hidden border-r border-[#eee] bg-[#fafafa]">
           <MiniSlide />
         </div>
@@ -262,6 +277,52 @@ function Header() {
   );
 }
 
+/** 녹음 데모에서 실시간으로 받아 적히는 강의 문장 (한 글자씩 적히고, 다 적히면 위로 밀려 올라간다) */
+const LECTURE = [
+  '세포 호흡은 해당 과정, 시트르산 회로, 전자전달계 순서로 진행돼요.',
+  '해당 과정은 세포질에서, 나머지 두 단계는 미토콘드리아에서 일어나요.',
+  '마지막 전자전달계에서 ATP가 가장 많이 만들어집니다.',
+  '이 순서는 시험에 꼭 나오니까 표시해 두세요.',
+];
+
+function LiveTranscript() {
+  const [reduced] = useState(() => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const [line, setLine] = useState(reduced ? 2 : 0);
+  const [len, setLen] = useState(reduced ? LECTURE[2].length : 0);
+  useEffect(() => {
+    if (reduced) return;
+    const full = LECTURE[line % LECTURE.length];
+    const done = len >= full.length;
+    const id = window.setTimeout(
+      () => {
+        if (done) {
+          setLine(line + 1);
+          setLen(0);
+        } else setLen(len + 1);
+      },
+      done ? 1500 : 55 + ((len * 37) % 50),
+    );
+    return () => window.clearTimeout(id);
+  }, [line, len, reduced]);
+  const n = LECTURE.length;
+  const prev = [LECTURE[(line + n - 2) % n], LECTURE[(line + n - 1) % n]];
+  return (
+    <div className="relative mt-5 h-[4.8em] overflow-hidden text-[15px] leading-[1.6]" aria-label={LECTURE[line % n]}>
+      <div className="absolute inset-x-0 bottom-0" aria-hidden>
+        {prev.map((p, i) => (
+          <div key={`${line}-${i}`} className="text-[#999]">
+            {p}
+          </div>
+        ))}
+        <div>
+          {LECTURE[line % n].slice(0, len)}
+          <span className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-[2px] animate-pulse bg-[#111]" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecordingCard() {
   const [t, setT] = useState(48 * 60 + 12);
   useEffect(() => {
@@ -269,8 +330,8 @@ function RecordingCard() {
     return () => window.clearInterval(id);
   }, []);
   return (
-    <div className="gradient-panel relative overflow-hidden rounded-[24px] p-6 md:p-10">
-      <div className="rounded-[18px] bg-white p-6 text-[#111] shadow-[0_10px_40px_rgba(40,50,120,0.18)]">
+    <div className="gradient-panel relative overflow-hidden rounded-[24px] p-4 md:p-10">
+      <div className="rounded-[18px] bg-white p-5 text-[#111] shadow-[0_10px_40px_rgba(40,50,120,0.18)] md:p-6">
         <div className="flex items-center justify-between text-[14px]">
           <span className="flex items-center gap-2 font-medium">
             <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-[#e5383b]" /> 세포생물학 5주차
@@ -288,11 +349,10 @@ function RecordingCard() {
             />
           ))}
         </div>
-        <p className="mt-5 text-[13px] text-[#888]">…세포 호흡의 마지막 단계는 전자전달계에서 일어나고,</p>
-        <p className="text-[15px]">이 과정에서 ATP가 가장 많이 만들어집니다|</p>
-        <div className="mt-5 flex flex-wrap gap-2 text-[12px]">
+        <LiveTranscript />
+        <div className="mt-5 flex flex-wrap gap-2 text-[13px]">
           {['실시간 자막', '끝나면 요약', '퀴즈 생성'].map((c) => (
-            <span key={c} className="rounded-full border border-[#e5e5e5] px-3 py-1.5 shadow-sm">
+            <span key={c} className="rounded-full border border-[#e5e5e5] px-2.5 py-1.5 shadow-sm md:px-3">
               {c}
             </span>
           ))}
@@ -309,7 +369,16 @@ const INPUTS = [
   { icon: NotebookPen, label: '메모' },
   { icon: ImageIcon, label: '필기 사진' },
 ];
-const OUTPUTS = ['AI 요약', 'AI 퀴즈', 'AI 플래시카드', 'AI 마인드맵', 'AI 튜터'];
+const OUTPUTS = [
+  { icon: AlignLeft, label: 'AI 요약' },
+  { icon: CircleCheck, label: 'AI 퀴즈' },
+  { icon: Layers, label: 'AI 플래시카드' },
+  { icon: Network, label: 'AI 마인드맵' },
+  { icon: Sparkles, label: 'AI 튜터' },
+];
+// 폰에서는 가운데 로고를 기준으로 위아래가 대칭이 되게 줄을 고정한다: 넣는 것 2·2·1 / 만들어지는 것 1·2·2
+const INPUT_ROWS = [[0, 1], [2, 3], [4]];
+const OUTPUT_ROWS = [[4], [0, 1], [2, 3]];
 
 function FlowDiagram() {
   const rows = [12, 31, 50, 69, 88];
@@ -317,14 +386,21 @@ function FlowDiagram() {
     <>
       {/* 폰: 위(넣는 것) → 가운데(스터디AI) → 아래(만들어지는 것) */}
       <div className="gradient-panel overflow-hidden rounded-[24px] px-4 py-8 md:hidden">
-        <div className="flex flex-wrap justify-center gap-2">
-          {INPUTS.map((it) => (
-            <span key={it.label} className="flex items-center gap-2 rounded-full bg-[#111] py-1.5 pl-1.5 pr-3.5 text-[13px] font-medium text-white">
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2a2a2a]">
-                <it.icon size={14} />
-              </span>
-              {it.label}
-            </span>
+        <div className="space-y-2">
+          {INPUT_ROWS.map((row) => (
+            <div key={row.join()} className="flex justify-center gap-2">
+              {row.map((k) => {
+                const it = INPUTS[k];
+                return (
+                  <span key={it.label} className="flex items-center gap-2 whitespace-nowrap rounded-full bg-[#111] py-1.5 pl-1.5 pr-3.5 text-[13px] font-medium text-white">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#2a2a2a]">
+                      <it.icon size={14} />
+                    </span>
+                    {it.label}
+                  </span>
+                );
+              })}
+            </div>
           ))}
         </div>
         <ArrowDown size={16} className="mx-auto my-3 text-[#3a46c8]" />
@@ -332,14 +408,21 @@ function FlowDiagram() {
           <span className="block rounded-full bg-[#111] px-6 py-3 text-[24px] font-bold tracking-[-0.04em] text-white">StudyAI</span>
         </div>
         <ArrowDown size={16} className="mx-auto my-3 text-[#3a46c8]" />
-        <div className="flex flex-wrap justify-center gap-2">
-          {OUTPUTS.map((o) => (
-            <span key={o} className="flex items-center gap-2 rounded-full bg-[#111] py-1.5 pl-1.5 pr-3.5 text-[13px] font-medium text-white">
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#111]">
-                <Sparkles size={13} />
-              </span>
-              {o}
-            </span>
+        <div className="space-y-2">
+          {OUTPUT_ROWS.map((row) => (
+            <div key={row.join()} className="flex justify-center gap-2">
+              {row.map((k) => {
+                const o = OUTPUTS[k];
+                return (
+                  <span key={o.label} className="flex items-center gap-2 whitespace-nowrap rounded-full bg-[#111] py-1.5 pl-1.5 pr-3.5 text-[13px] font-medium text-white">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-[#111]">
+                      <o.icon size={13} />
+                    </span>
+                    {o.label}
+                  </span>
+                );
+              })}
+            </div>
           ))}
         </div>
       </div>
@@ -363,8 +446,8 @@ function FlowDiagram() {
           <div className="order-first col-span-2 text-center text-[36px] font-bold tracking-[-0.06em] text-white/90 drop-shadow md:order-none md:col-span-1">StudyAI</div>
           <div className="space-y-4 justify-self-end md:space-y-8">
             {OUTPUTS.map((o) => (
-              <div key={o} className="flex w-fit items-center gap-2 rounded-full bg-[#111] px-4 py-3 text-[14px] text-white shadow-sm">
-                <Sparkles size={15} /> {o}
+              <div key={o.label} className="flex w-fit items-center gap-2 rounded-full bg-[#111] px-4 py-3 text-[14px] text-white shadow-sm">
+                <o.icon size={15} /> {o.label}
               </div>
             ))}
           </div>
@@ -424,9 +507,12 @@ function ShowcaseList() {
         <div key={s.label} className="text-center">
           <div className="text-[13px] text-muted">0{j + 1}</div>
           <h3 className="mt-2 text-[30px] font-normal tracking-[-0.03em]">{s.label}</h3>
-          <p className="mx-auto mt-3 max-w-[420px] text-[15px] leading-[1.65] text-sub">{s.sub}</p>
-          <div className="gradient-panel mt-8 overflow-hidden rounded-[20px] p-3 text-left">
-            <ScaledMiniApp tab={s.tab} />
+          <p className="mx-auto mt-3 max-w-[420px] break-keep text-[15px] leading-[1.65] text-sub [text-wrap:balance]">{s.sub}</p>
+          {/* 레퍼런스처럼 검은 기기 테두리 안의 화면이 판 아래쪽에 붙어 잘린다 */}
+          <div className="gradient-panel mt-8 overflow-hidden rounded-[20px] px-[6%] pt-[5%] text-left">
+            <div className="-mb-3 rounded-t-[16px] bg-[#1b1b1b] px-[5px] pt-[5px] pb-3">
+              <ScaledMiniApp tab={s.tab} />
+            </div>
           </div>
         </div>
       ))}
@@ -441,12 +527,15 @@ function HeroNote() {
   const { config } = useApp();
   const price = config ? config.plans.monthly.price.toLocaleString('ko-KR') : '9,900';
   return (
-    <div className="mt-6 flex items-center justify-center gap-2 text-[14px] text-muted">
-      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-soft text-blue">
+    <div className="mt-6 flex items-center justify-center gap-2.5 text-[14px] text-muted">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-soft text-blue">
         <Sparkles size={13} />
       </span>
-      <span>
-        <b className="font-semibold text-ink">무료로 시작, Pro는 월 {price}원</b> · 강의 녹음은 무료로 계속
+      {/* 폰에서는 두 줄로 끊는다 */}
+      <span className="text-left leading-[1.5]">
+        <b className="block font-semibold text-ink md:inline">무료로 시작, Pro는 월 {price}원</b>
+        <span className="hidden md:inline"> · </span>
+        <span className="block md:inline">강의 녹음은 무료로 계속</span>
       </span>
     </div>
   );
@@ -575,12 +664,12 @@ export default function Landing() {
       <Header />
 
       <section className="mx-auto max-w-[1180px] px-5 pt-16 text-center md:pt-24">
-        <h1 className="text-[28px] font-normal leading-[1.25] tracking-[-0.035em] md:text-[52px] md:font-medium">
+        <h1 className="break-keep text-[28px] font-normal leading-[1.25] tracking-[-0.035em] md:text-[52px] md:font-medium">
           필기는 녹음 버튼 하나로.
           <br />
           수업 시간엔 수업만 들으세요.
         </h1>
-        <p className="mx-auto mt-5 max-w-[560px] text-[15px] leading-[1.7] text-sub md:mt-6 md:text-[18px]">받아쓰기와 요약은 AI가 하고, 쌓인 강의는 퀴즈로 복습해요.</p>
+        <p className="mx-auto mt-5 max-w-[560px] break-keep text-[15px] leading-[1.7] text-sub [text-wrap:balance] md:mt-6 md:text-[18px]">받아쓰기와 요약은 AI가 하고, 쌓인 강의는 퀴즈로 복습해요.</p>
         <div className="mt-8 flex justify-center gap-2.5">
           <Button size="lg" variant="soft" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
             기능 보기
@@ -605,23 +694,16 @@ export default function Landing() {
             <br />
             정리는 AI가 끝까지.
           </h2>
-          <p className="mt-5 max-w-[440px] text-[16px] leading-[1.75] text-sub">
+          <p className="mt-5 max-w-[440px] break-keep text-[16px] leading-[1.75] text-sub">
             녹음하는 동안 자막이 실시간으로 쌓이고, 녹음을 멈추면 요약·핵심 개념·퀴즈가 준비돼요. 못 들은 부분은 자막을 눌러 그 시점부터 다시 들으면 돼요.
           </p>
-          <ul className="mt-6 space-y-2 text-[15px] text-sub">
-            {['무료 플랜에서도 녹음은 무제한', '시험에 나온다고 한 부분은 따로 표시', '녹음 파일만 올려도 똑같이 정리'].map((t) => (
-              <li key={t} className="flex items-center gap-2">
-                <Check size={16} className="text-ink" /> {t}
-              </li>
-            ))}
-          </ul>
         </div>
         <RecordingCard />
       </section>
 
       <section className="mx-auto max-w-[1180px] px-5 pt-32 text-center md:pt-40">
         <h2 className="text-[30px] font-normal tracking-[-0.03em] md:text-[36px] md:font-medium">어떤 자료든 넣기만 하세요.</h2>
-        <p className="mt-3 text-[15px] text-muted md:text-[16px]">강의 슬라이드, 유튜브 강의, 녹음, 메모, 칠판 사진. AI가 읽고 공부할 수 있게 바꿔요.</p>
+        <p className="mx-auto mt-3 max-w-[560px] break-keep text-[15px] text-muted [text-wrap:balance] md:text-[16px]">강의 슬라이드, 유튜브 강의, 녹음, 메모, 칠판 사진. AI가 읽고 공부할 수 있게 바꿔요.</p>
         <div className="mt-12 text-left">
           <FlowDiagram />
         </div>
@@ -641,9 +723,12 @@ export default function Landing() {
 
       <section className="mx-auto max-w-[1180px] px-5 pt-32 md:pt-40">
         <div className="gradient-panel rounded-[28px] px-6 py-16 text-center text-[#111] md:py-20">
-          <h2 className="text-[30px] font-normal tracking-[-0.03em] md:text-[36px] md:font-medium">오늘 수업부터 바로 써 보세요</h2>
-          <p className="mx-auto mt-3 max-w-[520px] text-[15px] text-[#2a2f4a]">
-            PDF와 영상을 요약하고 퀴즈·플래시카드로 복습하세요. 기본 플랜은 무료이고, 무제한 Pro는 월 {config ? config.plans.monthly.price.toLocaleString('ko-KR') : '9,900'}원이에요. 언제든 해지할 수 있어요.
+          <h2 className="break-keep text-[30px] font-normal leading-[1.3] tracking-[-0.03em] [text-wrap:balance] md:text-[36px] md:font-medium">오늘 수업부터 바로 써 보세요</h2>
+          {/* 폰에서는 문장마다 줄을 나눠 어색하게 끊기지 않게 한다 */}
+          <p className="mx-auto mt-4 max-w-[520px] break-keep text-[15px] leading-[1.7] text-[#2a2f4a] [text-wrap:balance]">
+            <span className="block md:inline">PDF와 영상을 요약하고 퀴즈·플래시카드로 복습하세요. </span>
+            <span className="block md:inline">기본 플랜은 무료, 무제한 Pro는 월 {config ? config.plans.monthly.price.toLocaleString('ko-KR') : '9,900'}원이에요. </span>
+            <span className="block md:inline">언제든 해지할 수 있어요.</span>
           </p>
           <Button size="lg" className="mt-8 !bg-[#111] !text-white" onClick={() => navigate('/home')}>
             지금 시작하기

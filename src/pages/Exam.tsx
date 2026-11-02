@@ -316,20 +316,20 @@ export function ExamHome() {
 
   return (
     <AppShell title="">
-      <div className="mx-auto grid w-full max-w-[1000px] items-center gap-12 px-5 py-10 md:grid-cols-[1fr_340px] md:py-[120px]">
+      {/* 폰에서는 위 여백과 간격을 줄여 시작 버튼이 첫 화면 안에 들어오게 한다 */}
+      <div className="mx-auto grid w-full max-w-[1000px] items-center gap-12 px-5 pb-10 pt-3 md:grid-cols-[1fr_340px] md:py-[120px]">
         <div>
           <NewBadge />
-          <h1 className="mt-4 text-[30px] font-medium leading-[1.3] tracking-[-0.03em]">
+          <h1 className="mt-3 text-[28px] font-medium leading-[1.3] tracking-[-0.03em] md:mt-4 md:text-[30px]">
             시험 범위 자료로
             <br />
             진짜 같은 모의고사를
           </h1>
-          <p className="mt-3 text-[15px] leading-[1.65] text-sub">
+          <p className="mt-3 break-keep text-[15px] leading-[1.65] text-sub">
             시험에 나올 자료를 고르면 제한 시간 안에 푸는 시험지가 만들어져요.
-            <br />
-            채점이 끝나면 어느 자료에서 많이 틀렸는지 짚어 드려요.
+            <br className="hidden md:block" /> 채점이 끝나면 어느 자료에서 많이 틀렸는지 짚어 드려요.
           </p>
-          <div className="mt-8 space-y-5">
+          <div className="mt-6 space-y-4 md:mt-8 md:space-y-5">
             {features.map((f) => (
               <div key={f.title} className="flex gap-3">
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-soft">
@@ -342,7 +342,7 @@ export function ExamHome() {
               </div>
             ))}
           </div>
-          <div className="mt-9 flex flex-wrap gap-2">
+          <div className="mt-6 flex flex-wrap gap-2 md:mt-9">
             <Button onClick={() => requireLogin(() => setBuilder('mock'))}>{me?.user ? '시험지 만들기' : '로그인하고 만들기'}</Button>
             <Button variant="outline" onClick={() => requireLogin(() => setBuilder('variant'))}>
               <ScrollText size={16} /> 족보 변형 문제
