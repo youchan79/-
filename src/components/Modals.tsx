@@ -113,34 +113,73 @@ function SocialButton({ kind, onClick, disabled }: { kind: SocialKind; onClick: 
   );
 }
 
-/** 구글 ID 토큰 방식은 구글이 직접 그려 주는 공식 버튼으로만 열 수 있다. 흰색 둥근 모양으로 맞춘다. */
+/*
+ * 구글 공식 버튼은 그릴 때마다 'Google로 계속하기'로 떴다가 0.5초쯤 뒤 '○○ 계정으로 계속'으로 바뀐다.
+ * 그래서 페이지가 열린 뒤 화면 밖(gsiHolder)에 미리 그려 두고, 로그인 창이 열리면 그 버튼을 자리 위에 겹쳐 보여 준다.
+ * iframe을 DOM에서 옮기면 다시 그려지므로 옮기지 않고 위치만 맞춘다.
+ */
+let gsiHolder: HTMLDivElement | null = null;
+let gsiWidth = 0;
+// 로그인 창 안쪽 폭: 창 최대 420px, 양옆 여백 16px, 안쪽 여백 24px, 테두리 1px
+const expectedGoogleWidth = () => Math.min(400, Math.min(420, window.innerWidth - 32) - 50);
+
+function prerenderGoogle(clientId: string, autoSelect: boolean, width = expectedGoogleWidth()) {
+  return loadScript(GOOGLE_SDK).then(() => {
+    if (!window.google) return;
+    initGoogle(clientId, autoSelect);
+    if (!gsiHolder) {
+      gsiHolder = document.createElement('div');
+      // 어두운 테마에서 iframe 뒤에 흰 사각형이 비치지 않게 color-scheme을 밝게 맞춘다
+      Object.assign(gsiHolder.style, { position: 'fixed', left: '0px', top: '0px', zIndex: '60', height: '40px', display: 'flex', justifyContent: 'center', visibility: 'hidden', pointerEvents: 'none', colorScheme: 'light' });
+      document.body.appendChild(gsiHolder);
+    }
+    if (gsiWidth === width) return;
+    gsiWidth = width;
+    gsiHolder.style.width = `${width}px`;
+    gsiHolder.replaceChildren();
+    window.google.accounts.id.renderButton(gsiHolder, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      shape: 'pill',
+      text: 'continue_with',
+      logo_alignment: 'center',
+      locale: 'ko',
+      width,
+    });
+  });
+}
+
+/** 구글 ID 토큰 방식은 구글이 직접 그려 주는 공식 버튼으로만 열 수 있다. 미리 그려 둔 버튼을 이 자리에 겹쳐 보여 준다. */
 function GoogleOfficialButton({ clientId, autoSelect }: { clientId: string; autoSelect: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     let alive = true;
-    loadScript(GOOGLE_SDK)
-      .then(() => {
-        const el = ref.current;
-        if (!alive || !el || !window.google) return;
-        initGoogle(clientId, autoSelect);
-        window.google.accounts.id.renderButton(el, {
-          type: 'standard',
-          theme: 'outline',
-          size: 'large',
-          shape: 'pill',
-          text: 'continue_with',
-          logo_alignment: 'center',
-          locale: 'ko',
-          width: Math.min(400, el.offsetWidth),
-        });
-      })
+    let raf = 0;
+    const hide = () => gsiHolder && Object.assign(gsiHolder.style, { visibility: 'hidden', pointerEvents: 'none' });
+    const place = () => {
+      const el = ref.current;
+      if (!alive || !el || !gsiHolder) return;
+      const r = el.getBoundingClientRect();
+      // 창 크기가 바뀌어 미리 그린 폭과 많이 다르면 다시 그린다
+      if (r.width && Math.abs(Math.min(400, Math.round(r.width)) - gsiWidth) > 8) void prerenderGoogle(clientId, autoSelect, Math.min(400, Math.round(r.width))).catch(() => {});
+      // 창 안에서 스크롤돼 카드 밖으로 나가면 숨긴다
+      const box = el.closest('.overflow-y-auto')?.getBoundingClientRect();
+      const inside = !!r.width && (!box || (r.top >= box.top && r.bottom <= box.bottom));
+      if (inside) Object.assign(gsiHolder.style, { left: `${r.left + (r.width - gsiWidth) / 2}px`, top: `${r.top}px`, visibility: 'visible', pointerEvents: 'auto' });
+      else hide();
+      raf = requestAnimationFrame(place);
+    };
+    prerenderGoogle(clientId, autoSelect)
+      .then(() => alive && place())
       .catch(() => {});
     return () => {
       alive = false;
+      cancelAnimationFrame(raf);
+      hide();
     };
   }, [clientId]);
-  // 어두운 테마에서 구글 버튼 iframe 뒤에 흰 사각형이 비치지 않게 iframe 쪽 color-scheme을 밝게 맞춘다
-  return <div ref={ref} className="flex h-10 w-full justify-center" style={{ colorScheme: 'light' }} />;
+  return <div ref={ref} className="h-10 w-full" />;
 }
 
 const PROVIDER_NAME: Record<HintProvider, string> = { kakao: '카카오', naver: '네이버', google: 'Google', email: '이메일' };
@@ -217,6 +256,14 @@ export function LoginModal() {
       })
       .catch(() => {});
   }, [googleOn, loggedOut, open, auth]);
+
+  // 로그아웃 상태면 구글 버튼을 미리 그려 둔다 (창을 열 때 '○○ 계정으로 계속'이 바로 보이게). 첫 화면이 먼저 뜨도록 조금 늦게.
+  useEffect(() => {
+    if (!googleOn || !loggedOut) return;
+    const h = readLoginHint();
+    const t = window.setTimeout(() => void prerenderGoogle(auth!.google!, h?.p === 'google' && !h.out).catch(() => {}), 1500);
+    return () => window.clearTimeout(t);
+  }, [googleOn, loggedOut, auth]);
 
   // 카카오 JavaScript SDK: 창이 열리면 SDK와 state를 미리 준비한다. 누르는 순간 바로 카카오톡 앱으로 넘어가게.
   useEffect(() => {

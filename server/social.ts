@@ -186,7 +186,11 @@ export function findOrCreateSocialUser(p: SocialProfile): { user: User; isNew: b
       p.provider,
       p.subject,
     );
-    if (linked) return { user: linked, isNew: false };
+    if (linked) {
+      // 동의 항목은 나중에 늘 수 있다(예: 카카오 닉네임). 로그인할 때마다 받은 이름·이메일로 갱신한다.
+      run('UPDATE user_identities SET name = COALESCE(?, name), email = COALESCE(?, email) WHERE provider = ? AND subject = ?', p.name, p.email, p.provider, p.subject);
+      return { user: linked, isNew: false };
+    }
 
     const link = (userId: string) =>
       run(
