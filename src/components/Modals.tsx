@@ -156,6 +156,8 @@ export function LoginModal() {
   const [socialError, setSocialError] = useState('');
   const [busy, setBusy] = useState(false);
   const [hint, setHint] = useState<LoginHint | null>(readLoginHint);
+  // 원조처럼 소셜 버튼만 먼저 보이고, 이메일 칸은 '이메일로 로그인'을 눌러야 펼친다
+  const [showEmail, setShowEmail] = useState(false);
   const kakaoPrep = useRef<{ state: string; redirectUri: string; at: number } | null>(null);
   const auth = config?.auth;
   const loggedOut = !!me && !me.user;
@@ -276,6 +278,8 @@ export function LoginModal() {
   const recent = hint && hint.p !== 'email' && enabled.includes(hint.p) ? hint.p : null;
   const ordered = recent ? [recent, ...enabled.filter((p) => p !== recent)] : enabled;
   const hasSocial = enabled.length > 0;
+  // 소셜이 없거나, 이메일로 로그인했던 기기거나, 펼쳤을 때만 이메일 칸을 보여 준다
+  const emailOpen = !hasSocial || showEmail || hint?.p === 'email';
   const input = 'h-12 w-full rounded-xl border border-line bg-canvas px-4 text-[15px] outline-none placeholder:text-muted focus:border-ink';
 
   return (
@@ -323,48 +327,59 @@ export function LoginModal() {
               에 동의하게 돼요
             </p>
             {auth!.mock && <p className="text-center text-[14px] text-blue">개발 모드: 가짜 로그인이에요 (구글은 아래 이메일 칸 주소로)</p>}
+            {!emailOpen && (
+              <button type="button" className="w-full py-1 text-center text-[14px] text-muted underline hover:text-ink" onClick={() => setShowEmail(true)}>
+                이메일로 로그인
+              </button>
+            )}
           </div>
-          <div className="my-5 flex items-center gap-3 text-[14px] text-muted">
-            <span className="h-px flex-1 bg-line" />
-            또는
-            <span className="h-px flex-1 bg-line" />
-          </div>
+          {emailOpen && (
+            <div className="my-5 flex items-center gap-3 text-[14px] text-muted">
+              <span className="h-px flex-1 bg-line" />
+              또는
+              <span className="h-px flex-1 bg-line" />
+            </div>
+          )}
         </>
       )}
-      <form onSubmit={submit} className={hasSocial ? 'space-y-3' : 'mt-5 space-y-3'}>
-        <input className={input} type="email" autoComplete="email" placeholder="이메일" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        <input
-          className={input}
-          type="password"
-          autoComplete={signup ? 'new-password' : 'current-password'}
-          placeholder={signup ? '비밀번호 (8자 이상)' : '비밀번호'}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        {signup && (
-          <label className="flex items-start gap-2.5 py-1 text-[13px] leading-[1.5] text-sub">
-            <input type="checkbox" className="mt-0.5 h-4 w-4 accent-current" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
-            <span>
-              <a href="/terms" target="_blank" className="underline">
-                이용약관
-              </a>
-              과{' '}
-              <a href="/privacy" target="_blank" className="underline">
-                개인정보 수집 및 이용
-              </a>
-              에 동의합니다 (필수)
-            </span>
-          </label>
-        )}
-        {error && <p className="text-[13px] text-red">{error}</p>}
-        <Button type="submit" size="lg" className="w-full" disabled={busy || (signup && !agree)}>
-          {busy ? <Spinner className="h-4 w-4" /> : signup ? '가입하고 시작하기' : '로그인'}
-        </Button>
-      </form>
-      <button type="button" className="mt-3 w-full py-2 text-[14px] text-muted hover:text-ink" onClick={() => openLogin({ mode: signup ? 'login' : 'signup', onDone: login.onDone })}>
-        {signup ? '이미 계정이 있어요' : '처음이에요, 가입할게요'}
-      </button>
+      {emailOpen && (
+        <>
+          <form onSubmit={submit} className={hasSocial ? 'space-y-3' : 'mt-5 space-y-3'}>
+            <input className={input} type="email" autoComplete="email" placeholder="이메일" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <input
+              className={input}
+              type="password"
+              autoComplete={signup ? 'new-password' : 'current-password'}
+              placeholder={signup ? '비밀번호 (8자 이상)' : '비밀번호'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+            {signup && (
+              <label className="flex items-start gap-2.5 py-1 text-[13px] leading-[1.5] text-sub">
+                <input type="checkbox" className="mt-0.5 h-4 w-4 accent-current" checked={agree} onChange={(e) => setAgree(e.target.checked)} />
+                <span>
+                  <a href="/terms" target="_blank" className="underline">
+                    이용약관
+                  </a>
+                  과{' '}
+                  <a href="/privacy" target="_blank" className="underline">
+                    개인정보 수집 및 이용
+                  </a>
+                  에 동의합니다 (필수)
+                </span>
+              </label>
+            )}
+            {error && <p className="text-[13px] text-red">{error}</p>}
+            <Button type="submit" size="lg" className="w-full" disabled={busy || (signup && !agree)}>
+              {busy ? <Spinner className="h-4 w-4" /> : signup ? '가입하고 시작하기' : '로그인'}
+            </Button>
+          </form>
+          <button type="button" className="mt-3 w-full py-2 text-[14px] text-muted hover:text-ink" onClick={() => openLogin({ mode: signup ? 'login' : 'signup', onDone: login.onDone })}>
+            {signup ? '이미 계정이 있어요' : '처음이에요, 가입할게요'}
+          </button>
+        </>
+      )}
     </Modal>
   );
 }
